@@ -74,12 +74,33 @@ def find_existing_db(argv) -> str | None:
 
 
 def _ask_mdx_path():
+    """弹窗让用户选择 .mdx 词典文件。返回路径或 None。
+
+    注意：用*实例化*的 QFileDialog（非静态方法）+ Qt 自绘对话框，
+    避免 Windows 原生对话框在 PyInstaller 打包环境下瞬间消失的问题。
+    """
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QFileDialog
-    path, _ = QFileDialog.getOpenFileName(
-        None, "选择 MDX 词典", os.path.expanduser("~/Desktop"),
-        "MDX 词典 (*.mdx);;所有文件 (*)",
-    )
-    return path or None
+
+    last_dir = os.path.expanduser("~/Desktop")
+    dlg = QFileDialog(None, "选择 MDX 词典", last_dir)
+    dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
+    dlg.setNameFilter("MDX 词典 (*.mdx);;所有文件 (*)")
+    # 强制用 Qt 自绘对话框（不吃 Windows 原生对话框打包后瞬闪的坑）
+    dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+    dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
+
+    # 确保对话框置顶并聚焦
+    dlg.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()
+    QApplication.processEvents()
+
+    state = dlg.exec()  # 阻塞直到用户选定/取消
+    if state and dlg.selectedFiles():
+        return dlg.selectedFiles()[0]
+    return None
 
 
 def build_from_mdx(mdx_path: str) -> str:

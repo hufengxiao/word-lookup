@@ -105,17 +105,17 @@ def _ask_mdx_path():
 
 def build_from_mdx(mdx_path: str) -> str:
     """把 .mdx 构建成 oxford.db，返回 db 路径。带简单进度提示。"""
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QMessageBox, QProgressDialog
 
     db_path = os.path.join(_app_root(), "oxford.db")
     prog = QProgressDialog(
-        "正在构建词典索引（首次使用需少量时间，词条越多越久）…",
-        "取消", 0, 100, None,
+        "正在构建词典索引…\n大词典可能需要 1-5 分钟，请耐心等待。",
+        "取消", 0, 0, None,   # range(0,0) = 不确定进度(转圈)
     )
     prog.setWindowTitle("构建词典")
-    prog.setWindowModality(0)
+    prog.setWindowModality(Qt.WindowModality.NonModal)
     prog.setMinimumDuration(0)
-    prog.setValue(5)
     prog.show()
     QApplication.processEvents()
 

@@ -97,6 +97,27 @@ class _LzoBackend:
         # 2. 尝试 ctypes 调系统库
         import ctypes
 
+        # 2a. 先从应用旁/常见目录找显式的 dll（利于 exe 分发时附带）
+        app_roots = []
+        try:
+            import sys, os
+            if getattr(sys, "frozen", False):
+                app_roots.append(os.path.dirname(sys.executable))
+            else:
+                app_roots.append(os.path.dirname(os.path.abspath(__file__)))
+        except Exception:
+            pass
+        for root in app_roots:
+            cand = os.path.join(root, "liblzo2.dll")
+            if os.path.exists(cand):
+                try:
+                    ctypes.CDLL(cand)
+                    self._mode = "ctypes"
+                    return self._mode
+                except OSError:
+                    pass
+
+        # 2b. 系统路径 / PATH
         for name in ("liblzo2.so.2", "liblzo2.so.1", "liblzo2.2.dylib", "liblzo2.dll"):
             try:
                 ctypes.CDLL(name)

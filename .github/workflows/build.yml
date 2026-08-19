@@ -38,6 +38,22 @@ jobs:
       - name: List artifacts
         run: Get-ChildItem dist
 
+      - name: Smoke test — exe 启动存活检查
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\WordLookup.exe"
+          # 启动 exe（首启应弹出初始化对话框等待，进程保持存活即 GUI 启动成功）
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 30
+          if ($p.HasExited) {
+            Write-Error "exe 在 30 秒内退出了(exit=$($p.ExitCode))，GUI 启动失败 / 闪退"
+            exit 1
+          } else {
+            Write-Host "PASS: WordLookup.exe 启动后进程存活 (PID $($p.Id))"
+            # 测试结束关闭该进程，避免遗留
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Upload exe artifact (workflow 界面可下载)
         uses: actions/upload-artifact@v4
         with:

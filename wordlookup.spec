@@ -2,10 +2,13 @@
 # PyInstaller 打包配置：WordLookup.exe（通用查词工具）
 # 用法：pyinstaller wordlookup.spec  （或直接运行 build_exe.bat）
 import sys
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 # 收集 python-lzo 的 C 扩展（Windows 上解压 MDX 必需）
 lzo_binaries, lzo_datas, lzo_hidden = collect_all('lzo', on_error='ignore')
+
+# 词典包全部模块（含子进程构建用到的 indexer/mdx_parser/lzo/ripemd128/searcher）
+dict_submodules = collect_submodules('dictionary')
 
 a = Analysis(
     ['main.py'],
@@ -13,7 +16,8 @@ a = Analysis(
     binaries=lzo_binaries,
     datas=lzo_datas,          # 不含词典 db —— 通用分发，首启用用户自己的 mdx
     hiddenimports=['dictionary.indexer', 'dictionary.mdx_parser',
-                   'dictionary.searcher', 'dictionary.lzo'] + lzo_hidden,
+                   'dictionary.searcher', 'dictionary.lzo',
+                   'dictionary.ripemd128', 'multiprocessing'] + dict_submodules + lzo_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

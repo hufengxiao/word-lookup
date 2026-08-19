@@ -11,15 +11,16 @@
     - 失焦变透明，鼠标移入恢复
     - 若没有 oxford.db，首启引导选择 .mdx 词典并自动构建索引
 
-修复说明 (v0.1.1+):
-    启动引导(选词典/构建)必须在 Qt 主事件循环运行后触发。
-    此前在 app.exec() 之前直接调用 QMessageBox/QFileDialog 的模态
-    exec()，在 PyInstaller 打包环境窗口不显示，导致看似"双击没反应"。
-    现改为进入主循环后由 QTimer.singleShot(0, ...) 触发引导。
+修订:
+  v0.1.1+ 启动引导移入 Qt 主事件循环后 (QTimer.singleShot)，避免打包后弹窗不显示。
+  v0.1.6+ 词典索引构建放入独立子进程 (multiprocessing)，避免占用 GUI 主线程
+          导致进度窗口白屏/未响应/被系统杀掉。
 """
 import os
 import sys
 import traceback
+
+import multiprocessing as _mp
 
 # 确保能 import 项目内模块
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -103,12 +104,44 @@ def _ask_mdx_path():
     return None
 
 
+def _build_worker_proc(mdx_path: str, db_path: str, result_q):
+    """(子进程入口) 在独立进程里构建词典索引。"""
+    try:
+        import os as _os
+        # 确保子进程能找到 dictionary 包（源码运行时项目根；打包后 _HERE 为临时目录
+        # 但词典模块打入 PYZ 由 PyInstaller 提供）
+        _root = _os.path.dirname(_os.path.abspath(__file__))
+        if _root not in sys.path:
+            sys.path.insert(0, _root)
+        from dictionary.indexer import build_from_mdx as _indexer_build
+
+        _indexer_build(mdx_path, db_path, verbose=False)
+        result_q.put(("done", db_path))
+    except Exception as e:  # noqa: BLE001
+        try:
+            result_q.put(("error", f"{type(e).__name__}: {e}"))
+        except Exception:
+            pass
+
+
 def build_from_mdx(mdx_path: str) -> str:
-    """把 .mdx 构建成 oxford.db，返回 db 路径。带简单进度提示。"""
+    """在子进程中把 .mdx 构建成 oxford.db。
+
+    关键：构建在 multiprocessing 子进程里执行，GUI 主线程保持响应，
+    进度窗口不会白屏/未响应。
+    """
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QMessageBox, QProgressDialog
 
     db_path = os.path.join(_app_root(), "oxford.db")
+
+    # 启动子进程构建
+    ctx = _mp.get_context("spawn" if sys.platform == "win32" else "fork")
+    result_q = ctx.Queue()
+    proc = ctx.Process(target=_build_worker_proc, args=(mdx_path, db_path, result_q), daemon=True)
+    proc.start()
+    write_log("[build] worker started (subprocess)")
+
     prog = QProgressDialog(
         "正在构建词典索引…\n大词典可能需要 1-5 分钟，请耐心等待。",
         "取消", 0, 0, None,   # range(0,0) = 不确定进度(转圈)
@@ -116,19 +149,65 @@ def build_from_mdx(mdx_path: str) -> str:
     prog.setWindowTitle("构建词典")
     prog.setWindowModality(Qt.WindowModality.NonModal)
     prog.setMinimumDuration(0)
+    prog.setAutoClose(False)
+    prog.setAutoReset(False)
     prog.show()
     QApplication.processEvents()
 
-    try:
-        from dictionary.indexer import build_from_mdx as _build
-        _build(mdx_path, db_path, verbose=False)
-    except Exception:
-        write_log("build_from_mdx FAILED:\n" + traceback.format_exc())
-        raise
-    finally:
+    outcome = {"db": None, "err": None}
+
+    def poll():
+        if not result_q.empty():
+            tag, val = result_q.get_nowait()
+            if tag == "done":
+                outcome["db"] = val
+            else:
+                outcome["err"] = val
+            running[0] = False
+            timer.stop()
+            prog.close()
+        elif not proc.is_alive() and running[0]:
+            # 进程异常退出且没发结果
+            running[0] = False
+            timer.stop()
+            prog.close()
+            outcome["err"] = "构建进程异常退出"
+
+    running = [True]
+    timer = QTimer()
+    timer.setInterval(300)
+    timer.timeout.connect(poll)
+    timer.start()
+
+    # 阻塞等待用户取消或构建完成（循环内 processEvents 保持 UI 响应）
+    while running[0] and prog.wasCanceled() is False:
+        QApplication.processEvents()
+        QApplication.processEvents()
+        import time as _t
+        _t.sleep(0.05)
+
+    if running[0]:
+        # 用户取消：终止子进程
+        timer.stop()
         prog.close()
-    write_log(f"[bootstrap] dictionary built: {db_path}")
-    return db_path
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        write_log("[build] cancelled by user")
+        raise SystemExit(0)
+
+    if outcome["err"]:
+        write_log("[build] FAILED: " + outcome["err"])
+        err = QMessageBox()
+        err.setIcon(QMessageBox.Icon.Critical)
+        err.setWindowTitle("构建失败")
+        err.setText(f"无法构建词典库：\n{outcome['err']}\n\n详细见程序目录 WordLookup.log")
+        err.exec()
+        raise RuntimeError(outcome["err"])
+
+    write_log(f"[bootstrap] dictionary built: {outcome['db']}")
+    return outcome["db"]
 
 
 # ----------------------------------------------------------------------------
@@ -249,6 +328,8 @@ def main():
 
 
 if __name__ == "__main__":
+    # PyInstaller + Windows multiprocessing 必需：子进程会重新进入 exe
+    _mp.freeze_support()
     try:
         sys.exit(main())
     except SystemExit:

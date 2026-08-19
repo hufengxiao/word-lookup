@@ -48,28 +48,33 @@ jobs:
             c.executemany('INSERT INTO words(key,key_lower,html) VALUES(?,?,?)', [('apple','apple','<p>apple</p>'),('hello','hello','<p>hello</p>'),('world','world','<p>world</p>')]); c.commit()"
           Write-Host "smoke db created"
 
-          Remove-Item -Path "$PWD\WordLookup.log" -ErrorAction SilentlyContinue
-          # 带 --show 启动，直接进入主窗口显示路径
           $exe = Join-Path $PWD "dist\WordLookup.exe"
-          $p = Start-Process -FilePath $exe -ArgumentList "--show","smoke_test.db" -PassThru
+          # 日志写在 exe 同目录 (dist/)
+          $logFile = Join-Path $PWD "dist\WordLookup.log"
+          Remove-Item -Path $logFile -ErrorAction SilentlyContinue
+
+          # 带 --show 启动，直接进入主窗口显示路径
+          $p = Start-Process -FilePath $exe -ArgumentList "--show","$(Join-Path $PWD 'smoke_test.db')" -PassThru
           Start-Sleep -Seconds 35
 
           # 断言1: 进程应存活（不闪退）
           if ($p.HasExited) {
             Write-Error "exe 在 35 秒内退出了(exit=$($p.ExitCode))，GUI 启动失败 / 闪退"
-            if (Test-Path "$PWD\WordLookup.log") { Write-Host "---- WordLookup.log ----"; Get-Content "$PWD\WordLookup.log" }
+            if (Test-Path $logFile) { Write-Host "---- WordLookup.log ----"; Get-Content $logFile }
             exit 1
           }
-          # 断言2: 日志应包含 window shown（窗口真实显示成功）
+          # 断言2: exe 旁日志应包含 window shown（窗口真实显示成功）
           Start-Sleep -Seconds 3
           $logOK = $false
-          if (Test-Path "$PWD\WordLookup.log") {
-            $logOK = (Select-String -Path "$PWD\WordLookup.log" -Pattern "window shown" -Quiet)
-            Write-Host "---- WordLookup.log ----"
-            Get-Content "$PWD\WordLookup.log"
+          if (Test-Path $logFile) {
+            $logOK = (Select-String -Path $logFile -Pattern "window shown" -Quiet)
+            Write-Host "---- WordLookup.log (dist) ----"
+            Get-Content $logFile
+          } else {
+            Write-Host "!! 未找到日志文件: $logFile"
           }
           if (-not $logOK) {
-            Write-Error "exe 进程未退出但窗口未显示（WordLookup.log 无 'window shown'）"
+            Write-Error "exe 进程未退出但窗口未显示（log 无 'window shown'）"
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
             exit 1
           }

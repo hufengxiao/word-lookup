@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """词条详情窗口：渲染词典正文 HTML（轻量 QTextBrowser）。"""
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QCloseEvent, QKeyEvent
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QTextBrowser, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 _DEFAULT_STYLE = """
@@ -39,11 +39,16 @@ class DetailWindow(QWidget):
             "QLabel#detailTitle { padding: 8px 14px; font-size: 15px;"
             " font-weight: 600; color: #222; border-bottom: 1px solid #e0e0e0; }"
         )
-        self._close_btn = QLabel("✕")
+        # 关闭按钮（用 QPushButton + clicked 信号，避免覆盖事件处理的坑）
+        self._close_btn = QPushButton("✕")
+        self._close_btn.setFixedSize(26, 26)
+        self._close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._close_btn.setStyleSheet(
-            "color:#888; padding:4px 10px; font-size:14px;"
+            "QPushButton { border:none; color:#888; font-size:14px;"
+            " border-radius:13px; background:transparent; }"
+            "QPushButton:hover { background:rgba(180,180,180,120); color:#333; }"
         )
-        self._close_btn.mousePressEvent = lambda _e: self.close()
+        self._close_btn.clicked.connect(self.close)
 
         title_row = QHBoxLayout()
         title_row.addWidget(self._title, 1)

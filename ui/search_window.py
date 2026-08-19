@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Spotlight 风格的搜索主窗口。"""
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, QEvent
 from PySide6.QtGui import QFont, QKeyEvent
 from PySide6.QtWidgets import (
     QFrame, QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout,
@@ -103,6 +103,9 @@ class SearchWindow(QFrame):
 
         self._is_active_opacity = True
         self._did_center = False
+        # 拖动状态
+        self._dragging = False
+        self._drag_offset = None
 
     # ------------------------------------------------------------------
     # 默认详情窗口工厂
@@ -211,7 +214,7 @@ class SearchWindow(QFrame):
     # 键盘事件（上下键交给 QListWidget，这里补 Esc）
     # ------------------------------------------------------------------
     def keyPressEvent(self, event: QKeyEvent):
-        if event.key() == Qt.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape:
             self.hide_window()
             event.accept()
             return
@@ -220,22 +223,24 @@ class SearchWindow(QFrame):
     # ------------------------------------------------------------------
     # 透明度交互：失焦变透明，鼠标移入恢复
     # ------------------------------------------------------------------
-    def changeEvent(self, event):
-        if event.type() == Qt.Type.WindowStateChange:
-            super().changeEvent(event)
     def event(self, event):
+        """重载事件分发，处理窗口激活/失焦，实现透明度切换。"""
         etype = event.type()
-        if etype == Qt.Event.WindowDeactivate:
-            # 失焦 → 近乎透明
+        if etype == QEvent.Type.WindowDeactivate:
+            # 失焦 → 近乎透明（仍置顶，便于鼠标重新点回）
             self._is_active_opacity = False
             self.setWindowOpacity(OPACITY_FOCUS_LOST)
-        elif etype in (Qt.Event.Enter, Qt.Event.FocusIn):
+        elif etype == QEvent.Type.WindowActivate:
+            # 重新激活 → 恢复不透明
+            self._is_active_opacity = True
+            self.setWindowOpacity(OPACITY_ACTIVE)
+        elif etype == QEvent.Type.Enter:
+            # 鼠标移入窗口（可能仍是失焦半透明状态）→ 恢复并重新聚焦
             if not self._is_active_opacity:
                 self._is_active_opacity = True
                 self.setWindowOpacity(OPACITY_ACTIVE)
-        elif etype == Qt.Event.WindowActivate:
-            self._is_active_opacity = True
-            self.setWindowOpacity(OPACITY_ACTIVE)
+                self.activateWindow()
+                self._edit.setFocus(Qt.FocusReason.OtherFocusReason)
         return super().event(event)
 
     def enterEvent(self, event):
@@ -243,27 +248,29 @@ class SearchWindow(QFrame):
             self._is_active_opacity = True
             self.setWindowOpacity(OPACITY_ACTIVE)
             self.activateWindow()
-            self._edit.setFocus(Qt.OtherFocusReason)
+            self._edit.setFocus(Qt.FocusReason.OtherFocusReason)
         super().enterEvent(event)
 
     # ------------------------------------------------------------------
     # 拖动（鼠标按住窗口空白 / 输入框顶部区域）
     # ------------------------------------------------------------------
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             self._dragging = True
             event.accept()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if getattr(self, "_dragging", False) and event.buttons() & Qt.LeftButton:
+        if getattr(self, "_dragging", False) and event.buttons() & Qt.MouseButton.LeftButton:
             self.move(event.globalPosition().toPoint() - self._drag_offset)
             event.accept()
+            return
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        self._dragging = False
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = False
         super().mouseReleaseEvent(event)
 
 

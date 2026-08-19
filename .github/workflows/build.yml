@@ -41,18 +41,27 @@ jobs:
       - name: Smoke test — exe 启动存活检查
         shell: pwsh
         run: |
+          # 生成一个最小词典 db，让 exe 走「加载词典→显示主窗口」路径
+          python -c "import sqlite3,os; c=sqlite3.connect('smoke_test.db'); \
+            c.execute('CREATE TABLE words(id INTEGER PRIMARY KEY,key TEXT,key_lower TEXT,html TEXT)'); \
+            c.execute('CREATE INDEX idx_words_key_lower ON words(key_lower)'); \
+            c.executemany('INSERT INTO words(key,key_lower,html) VALUES(?,?,?)', [('apple','apple','<p>apple</p>'),('hello','hello','<p>hello</p>'),('world','world','<p>world</p>')]); c.commit()"
+          Write-Host "smoke db created"
+
+          # 带 --show 启动，直接进入主窗口显示路径（arg 里的 .db 会被程序识别）
           $exe = Join-Path $PWD "dist\WordLookup.exe"
-          # 启动 exe（首启应弹出初始化对话框等待，进程保持存活即 GUI 启动成功）
-          $p = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 30
+          $p = Start-Process -FilePath $exe -ArgumentList "--show","smoke_test.db" -PassThru
+          Start-Sleep -Seconds 35
           if ($p.HasExited) {
-            Write-Error "exe 在 30 秒内退出了(exit=$($p.ExitCode))，GUI 启动失败 / 闪退"
+            Write-Error "exe 在 35 秒内退出了(exit=$($p.ExitCode))，GUI 启动失败 / 闪退"
+            Get-ChildItem -Path $PWD -Filter "WordLookup.log" | ForEach-Object { Write-Host "---- WordLookup.log ----"; Get-Content $_ }
             exit 1
           } else {
             Write-Host "PASS: WordLookup.exe 启动后进程存活 (PID $($p.Id))"
-            # 测试结束关闭该进程，避免遗留
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
           }
+        env:
+          PYTHONIOENCODING: utf-8
 
       - name: Upload exe artifact (workflow 界面可下载)
         uses: actions/upload-artifact@v4

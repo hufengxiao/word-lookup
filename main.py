@@ -181,7 +181,12 @@ def bootstrap(app, argv) -> int:
             write_log("[bootstrap] hotkey register FAILED: " + str(e))
 
     if "--show" in sys.argv or (sys.platform != "win32" and not gh):
-        window.show_window()
+        try:
+            window.show_window()
+            write_log("[bootstrap] window shown")
+        except Exception as e:  # noqa: BLE001
+            write_log("[bootstrap] window show FAILED:\n" + traceback.format_exc())
+            return 1
 
     app._gh = gh  # 保存引用防 GC
     write_log("[bootstrap] ready")

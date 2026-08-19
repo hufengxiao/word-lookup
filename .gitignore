@@ -7,7 +7,6 @@ __pycache__/
 # 构建产物
 build/
 dist/
-*.spec
 *.egg-info/
 
 # 大型词典数据库（用户本地自行生成）

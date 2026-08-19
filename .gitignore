@@ -1,0 +1,28 @@
+# 忽略虚拟环境与缓存
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# 构建产物
+build/
+dist/
+*.spec
+*.egg-info/
+
+# 大型词典数据库（用户本地自行生成）
+oxford.db
+oxford_test.db
+dict/*.db
+
+# 词典源文件（版权，不入库）
+*.mdx
+*.mdd
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/

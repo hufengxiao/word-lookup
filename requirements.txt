@@ -1,0 +1,11 @@
+# 运行时 (GUI) 依赖 —— 只需 PySide6
+# 词典数据库 (.db) 需预先用工具构建（见下文），运行时不再需要 lzo/lxml。
+PySide6>=6.6
+
+# ------------------------------------------------------------------
+# 仅构建词典数据库时需要（把 .mdx 转成 oxford.db 的一次性工具）：
+# 在 NAS 或 Windows 上执行 `python -m dictionary.indexer <xx.mdx> oxford.db`
+# 不参与 GUI 运行。Windows 上 LZO 解压依赖：
+#   pip install readmdict python-lzo lxml
+# 若 python-lzo 装不上，可改用本项目自带的 ctypes LZO（需系统 liblzo2）。
+# ------------------------------------------------------------------

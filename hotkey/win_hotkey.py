@@ -74,6 +74,8 @@ class GlobalHotkey:
         self._thread = None
         self._running = False
         self._hwnd = None
+        self._registered = threading.Event()  # 标记注册是否完成
+        self._register_error = None
 
     def _mod_flags(self) -> int:
         flags = 0
@@ -84,30 +86,53 @@ class GlobalHotkey:
             flags |= _MOD_MAP[m]
         return flags
 
-    def start(self):
-        """在新线程启动热键监听。"""
+    def start(self, wait=True):
+        """在新线程启动热键监听。
+
+        :param wait: 若为 True，阻塞直到热键注册完成（成功或失败）返回。
+        """
         if self._thread and self._thread.is_alive():
             return
         self._running = True
+        self._registered.clear()
+        self._register_error = None
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+        if wait:
+            self._registered.wait(timeout=5.0)
+            if self._register_error:
+                raise RuntimeError(self._register_error)
 
     def _run(self):
+        import ctypes
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
-        # 注册热键
-        vk = _vk_from_char(self.key)
-        if vk is None:
-            raise ValueError(f"无法解析按键: {self.key}")
-        ok = user32.RegisterHotKey(None, self.id, self._mod_flags(), vk)
-        if not ok:
-            error = ctypes.get_last_error()
-            raise RuntimeError(f"RegisterHotKey 失败，错误码 {error}（可能热键已被占用）")
+        try:
+            # 显式声明签名，避免 ctypes 对 HWND 传参的隐式转换问题
+            user32.RegisterHotKey.argtypes = [
+                ctypes.wintypes.HWND, ctypes.c_int,
+                ctypes.c_uint, ctypes.c_uint,
+            ]
+            user32.RegisterHotKey.restype = ctypes.c_bool
+            vk = _vk_from_char(self.key)
+            if vk is None:
+                raise ValueError(f"无法解析按键: {self.key}")
+            ok = user32.RegisterHotKey(ctypes.wintypes.HWND(0), self.id,
+                                       self._mod_flags(), vk)
+            if not ok:
+                error = ctypes.get_last_error()
+                raise RuntimeError(
+                    f"RegisterHotKey 失败，错误码 {error}（可能热键已被占用）"
+                )
+        except Exception as e:  # noqa: BLE001
+            self._register_error = str(e)
+            self._registered.set()
+            return
 
+        self._registered.set()
         msg = wt.MSG()
         try:
             while self._running:
-                # PeekMessage 非阻塞轮询 + sleep，避免完全占用线程占用资源
-                r = user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0x0001)  # PM_REMOVE
+                r = user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0x0001)
                 if r:
                     if msg.message == WM_HOTKEY and msg.wParam == self.id:
                         cb = self.on_press

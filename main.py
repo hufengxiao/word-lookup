@@ -275,21 +275,71 @@ def bootstrap(app, argv) -> int:
             from hotkey.win_hotkey import GlobalHotkey
             gh = GlobalHotkey(["CTRL", "SHIFT"], "M")
             gh.on_press = bridge.toggleRequested.emit
-            gh.start()
+            gh.start(wait=True)   # 阻塞到确认注册成功/失败
             write_log("[bootstrap] hotkey registered")
         except Exception as e:  # noqa: BLE001
             write_log("[bootstrap] hotkey register FAILED: " + str(e))
 
-    if "--show" in sys.argv or (sys.platform != "win32" and not gh):
-        try:
-            window.show_window()
-            write_log("[bootstrap] window shown")
-        except Exception as e:  # noqa: BLE001
-            write_log("[bootstrap] window show FAILED:\n" + traceback.format_exc())
-            return 1
+    # 托盘图标：后台驻留时的可见入口（右键菜单打开/退出）
+    _setup_tray(app, window, gh)
+
+    # 无论是否 --show，启动后都显示一次搜索框——用户打开即见界面，
+    # 不需要猜热键；Ctrl+Shift+M 用于随时唤起/隐藏。
+    try:
+        window.show_window()
+        write_log("[bootstrap] window shown")
+    except Exception as e:  # noqa: BLE001
+        write_log("[bootstrap] window show FAILED:\n" + traceback.format_exc())
+        return 1
 
     app._gh = gh  # 保存引用防 GC
     write_log("[bootstrap] ready")
+
+
+def _setup_tray(app, window: SearchWindow, gh):
+    """创建系统托盘图标，作为后台驻留的可见入口。"""
+
+    def open_window():
+        window.show_window()
+
+    try:
+        from PySide6.QtWidgets import QSystemTrayIcon, QMenu
+        app.setQuitOnLastWindowClosed(False)  # 关闭搜索框不退出进程
+
+        tray = QSystemTrayIcon(app)
+        # 用打包进来的图标
+        icon_path = None
+        if getattr(sys, "frozen", False):
+            cand = os.path.join(os.path.dirname(sys.executable), "WordLookup.ico")
+            if os.path.exists(cand):
+                icon_path = cand
+        if not icon_path:
+            cand = os.path.join(_HERE, "assets", "WordLookup.ico")
+            if os.path.exists(cand):
+                icon_path = cand
+        if icon_path:
+            from PySide6.QtGui import QIcon
+            tray.setIcon(QIcon(icon_path))
+
+        menu = QMenu()
+        act_open = menu.addAction("打开查词 (Ctrl+Shift+M)")
+        act_open.triggered.connect(open_window)
+        menu.addSeparator()
+        act_quit = menu.addAction("退出")
+        act_quit.triggered.connect(app.quit)
+
+        tray.setContextMenu(menu)
+        tray.setToolTip("Word Lookup — 按 Ctrl+Shift+M 唤起查词")
+        tray.activated.connect(
+            lambda reason: open_window()
+            if reason == QSystemTrayIcon.ActivationReason.Trigger
+            else None
+        )
+        tray.setVisible(True)
+        app._tray = tray  # 防 GC
+        write_log("[bootstrap] tray icon shown")
+    except Exception as e:  # noqa: BLE001
+        write_log("[bootstrap] tray setup FAILED: " + str(e))
 
 
 class AppBridge(QObject):
@@ -303,6 +353,7 @@ class AppBridge(QObject):
         self.toggleRequested.connect(self._toggle)
 
     def _toggle(self):
+        write_log("[hotkey] Ctrl+Shift+M pressed -> toggle")
         self._window.toggle()
 
 
@@ -311,6 +362,21 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Word Lookup")
     write_log("[startup] QApplication ready")
+
+    # ---- 单实例保护：避免重复双击导致热键/db 冲突 ----
+    try:
+        from PySide6.QtCore import QLockFile
+        lock_path = os.path.join(_app_root(), "wordlookup.lock")
+        lock = QLockFile(lock_path)
+        lock.setStaleLockTime(0)
+        if not lock.tryLock(100):
+            write_log("[startup] 已有实例在运行，退出本次启动")
+            raise SystemExit(0)
+        app._lockfile = lock
+    except SystemExit:
+        raise
+    except Exception as e:  # noqa: BLE001
+        write_log("[startup] lock setup FAILED: " + str(e))
 
     # 进入主事件循环后触发引导（确保 Qt 对话框在事件循环内正常显示）
     QTimer.singleShot(0, lambda: bootstrap(app, sys.argv))

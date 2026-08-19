@@ -14,7 +14,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=lzo_binaries,
-    datas=lzo_datas,          # 不含词典 db —— 通用分发，首启用用户自己的 mdx
+    datas=[('assets', 'assets')],  # 图标等静态资源, 供托盘/前台使用; 不含词典 db
     hiddenimports=['dictionary.indexer', 'dictionary.mdx_parser',
                    'dictionary.searcher', 'dictionary.lzo',
                    'dictionary.ripemd128', 'multiprocessing'] + dict_submodules + lzo_hidden,

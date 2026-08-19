@@ -13,6 +13,7 @@
 """
 import os
 import sys
+import traceback
 
 # 确保能 import 项目内模块
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -24,6 +25,22 @@ from PySide6.QtWidgets import QApplication
 
 from dictionary.searcher import Searcher
 from ui.search_window import SearchWindow
+
+
+def _log_path() -> str:
+    """崩溃/日志文件路径（exe 或源码旁）。"""
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(sys.executable), "WordLookup.log")
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "WordLookup.log")
+
+
+def write_log(msg: str):
+    """把消息追加写进日志文件（便于 release 排障）。"""
+    try:
+        with open(_log_path(), "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
 
 
 class AppBridge(QObject):
@@ -79,7 +96,7 @@ def _ask_mdx_path():
 
 def build_from_mdx(mdx_path: str) -> str:
     """把 .mdx 构建成 oxford.db，返回 db 路径。带简单进度提示。"""
-    from PySide6.QtWidgets import QProgressDialog
+    from PySide6.QtWidgets import QMessageBox, QProgressDialog
 
     db_path = os.path.join(_app_root(), "oxford.db")
     prog = QProgressDialog(
@@ -87,31 +104,38 @@ def build_from_mdx(mdx_path: str) -> str:
         "取消", 0, 100, None,
     )
     prog.setWindowTitle("构建词典")
-    prog.setWindowModality(0)  # 非模态，避免卡
+    prog.setWindowModality(0)
     prog.setMinimumDuration(0)
     prog.setValue(5)
     prog.show()
+    QApplication.processEvents()
 
-    from dictionary.indexer import build_from_mdx as _build
-    stats = _build(mdx_path, db_path, verbose=False)
-    prog.setValue(100)
-    prog.close()
+    try:
+        from dictionary.indexer import build_from_mdx as _build
+        stats = _build(mdx_path, db_path, verbose=False)
+    except Exception:
+        write_log("build_from_mdx FAILED:\n" + traceback.format_exc())
+        raise
+    finally:
+        prog.close()
     return db_path
 
 
-def ensure_dictionary(argv) -> str:
-    """确保存在词典数据库：找到则返回，找不到则引导用户选 .mdx 构建。"""
+def ensure_dictionary(app, argv) -> str:
+    """确保存在词典数据库：找到返回；否则引导用户选 .mdx 构建。
+
+    注意：需在 QApplication 创建之后调用（内部会弹 QMessageBox/QFileDialog）。
+    """
+    from PySide6.QtWidgets import QMessageBox
+
     existing = find_existing_db(argv)
     if existing:
         return existing
 
-    from PySide6.QtWidgets import QMessageBox
-
-    # 用户取消/忽略直接退出
+    # 用户取消/忽略直接静默退出
     box = QMessageBox()
-    box.setIcon(QMessageBox.Icon.Information)
-    box.setWindowTitle("首次使用")
-    box.setText("还没有词典数据库。\n是否现在选择你的 .mdx 词典文件来构建？（后续即可直接使用）")
+    box.setWindowTitle("Word Lookup")
+    box.setText("还没有词典数据库。\n是否现在选择你的 .mdx 词典文件来构建索引？")
     box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
     if box.exec() != QMessageBox.StandardButton.Yes:
         raise SystemExit(0)
@@ -125,23 +149,30 @@ def ensure_dictionary(argv) -> str:
         err = QMessageBox()
         err.setIcon(QMessageBox.Icon.Critical)
         err.setWindowTitle("构建失败")
-        err.setText(f"无法构建词典库：\n{e}")
+        err.setText(f"无法构建词典库：\n{e}\n\n详细日志见程序目录 WordLookup.log")
         err.exec()
         raise SystemExit(1)
 
 
 def main():
+    app = QApplication(sys.argv)          # 必须先建 QApplication
+    app.setApplicationName("Word Lookup")
+
+    write_log(f"[startup] platform={sys.platform} frozen={getattr(sys,'frozen',False)}")
+
+    # 词典数据库（可能引导用户选 .mdx 构建）
     try:
-        db_path = ensure_dictionary(sys.argv)
+        db_path = ensure_dictionary(app, sys.argv)
     except SystemExit:
         return 0
 
-    app = QApplication(sys.argv)
-    app.setApplicationName("Word Lookup")
+    write_log(f"[startup] db={os.path.basename(db_path)}")
 
     try:
         searcher = Searcher(db_path)
+        write_log("[startup] searcher loaded, entries=...")
     except Exception as e:  # noqa: BLE001
+        write_log("[startup] searcher FAILED:\n" + traceback.format_exc())
         from PySide6.QtWidgets import QMessageBox
         box = QMessageBox()
         box.setIcon(QMessageBox.Icon.Critical)
@@ -155,10 +186,14 @@ def main():
 
     gh = None
     if sys.platform == "win32":
-        from hotkey.win_hotkey import GlobalHotkey
-        gh = GlobalHotkey(["CTRL", "SHIFT"], "M")
-        gh.on_press = bridge.toggleRequested.emit  # 跨线程发信号
-        gh.start()
+        try:
+            from hotkey.win_hotkey import GlobalHotkey
+            gh = GlobalHotkey(["CTRL", "SHIFT"], "M")
+            gh.on_press = bridge.toggleRequested.emit
+            gh.start()
+            write_log("[startup] hotkey registered")
+        except Exception as e:  # noqa: BLE001
+            write_log("[startup] hotkey register FAILED: " + str(e))
 
     if "--show" in sys.argv or (sys.platform != "win32" and not gh):
         window.show_window()
@@ -172,4 +207,10 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except Exception:
+        write_log("FATAL top-level:\n" + traceback.format_exc())
+        raise

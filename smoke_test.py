@@ -127,6 +127,16 @@ def main():
     step(f"失焦透明度 → {win.windowOpacity()}")
     win.enterEvent(None)
     step(f"鼠标移入恢复 → {win.windowOpacity()}")
+    # 回归：修复"移入后一直不透明"的 bug —— 失焦/移出后应能再次变透明。
+    win.setWindowOpacity(1.0)
+    win._is_active_opacity = True
+    win._refresh_opacity(force_using=False)     # 无焦点 + 鼠标在外 → 判透明
+    step(f"移出+失焦后透明度 → {win.windowOpacity()}")
+    assert win.windowOpacity() < 0.5, "FAIL: 失焦/移出后未变透明(bug 复现)"
+    win._refresh_opacity(force_using=True)      # 再悬停 → 恢复不透明
+    step(f"再次使用后透明度 → {win.windowOpacity()}")
+    assert win.windowOpacity() > 0.9, "FAIL: 复用后未恢复不透明"
+    step("透明度回归 PASS")
 
     # 搜索无匹配
     win._title.setText("zzzzqqqq")

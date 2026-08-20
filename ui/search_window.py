@@ -12,7 +12,7 @@ Windows + 无边框置顶窗口下稳定可见。
 """
 from PySide6.QtCore import Qt, QTimer, QEvent, QRect, QSize
 from PySide6.QtGui import (
-    QFont, QPainter, QColor, QKeyEvent, QLinearGradient, QBrush,
+    QFont, QPainter, QColor, QKeyEvent, QLinearGradient, QBrush, QCursor,
 )
 from PySide6.QtWidgets import (
     QFrame, QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout, QHBoxLayout,
@@ -163,6 +163,39 @@ class SearchWindow(QFrame):
         self._expanded = False
         self._last_query = ""
 
+        # 透明度巡检器：不依赖 WindowDeactivate/Activate 事件(工具窗常漏发)，
+        # 周期性检查「窗口是否正被使用(有焦点或鼠标停留)」来决定透明与否，
+        # 彻底避免"移入后一直不透明"的死锁 bug。
+        self._op_timer = QTimer(self)
+        self._op_timer.setInterval(150)
+        self._op_timer.timeout.connect(self._refresh_opacity)
+
+    # ------------------------------------------------------------------
+    # 透明度：根据“当前正在使用该窗口”与否，周期性刷新，失焦即透明
+    # ------------------------------------------------------------------
+    def _start_opacity_watch(self):
+        if not self._op_timer.isActive():
+            self._op_timer.start()
+
+    def _stop_opacity_watch(self):
+        self._op_timer.stop()
+
+    def _refresh_opacity(self, force_using: bool | None = None):
+        if not self.isVisible() and force_using is None:
+            return
+        if force_using is None:
+            # 正在使用?  -> 有焦点(正在输入) 或 鼠标正停留在这个窗口上(悬停查看)
+            mouse_in = self.rect().adjusted(-6, -6, 6, 6).contains(
+                self.mapFromGlobal(QCursor.pos())
+            )
+            using = self.isActiveWindow() or self.hasFocus() or mouse_in
+        else:
+            using = force_using
+        opaque = using  # 窗口“正被使用”时保持不透明
+        if opaque != self._is_active_opacity:
+            self._is_active_opacity = opaque
+            self.setWindowOpacity(OPACITY_ACTIVE if opaque else OPACITY_FOCUS_LOST)
+
     # ------------------------------------------------------------------
     # 默认详情窗口工厂
     # ------------------------------------------------------------------
@@ -208,12 +241,15 @@ class SearchWindow(QFrame):
 
     def show_window(self):
         self._center()
+        self._is_active_opacity = True
         self.setWindowOpacity(OPACITY_ACTIVE)
         # 一次性完成显示+置顶+聚焦, 减少 Windows 上多次窗口管理调用
         self.show()
         self.raise_()
         self.activateWindow()
         self._title.setFocus(Qt.OtherFocusReason)
+        # 启动透明度巡检器，让窗口随焦点/鼠标实时透明(失焦即透明)
+        self._start_opacity_watch()
         txt = self._title.text().strip()
         if txt:
             # 结果已就绪且文本没变, 不再重复搜索(避免闪烁与开销)
@@ -227,6 +263,7 @@ class SearchWindow(QFrame):
             self._title.setFocus(Qt.OtherFocusReason)
 
     def hide_window(self):
+        self._stop_opacity_watch()
         self.hide()
 
     def _collapse(self):
@@ -385,33 +422,20 @@ class SearchWindow(QFrame):
         return False
 
     # ------------------------------------------------------------------
-    # 透明度：失焦变透明，鼠标移入恢复
+    # 透明度：由 _refresh_opacity 定时巡检决定（失焦/移出即透明，悬停/聚焦恢复）
     # ------------------------------------------------------------------
     def event(self, event):
-        etype = event.type()
-        if etype == QEvent.Type.WindowDeactivate:
-            if self._is_active_opacity:
-                self._is_active_opacity = False
-                self.setWindowOpacity(OPACITY_FOCUS_LOST)
-        elif etype == QEvent.Type.WindowActivate:
-            self._is_active_opacity = True
-            self.setWindowOpacity(OPACITY_ACTIVE)
-        elif etype == QEvent.Type.Enter:
-            if not self._is_active_opacity:
-                self._is_active_opacity = True
-                self.setWindowOpacity(OPACITY_ACTIVE)
-                self.activateWindow()
-                self._title.setFocus(Qt.FocusReason.OtherFocusReason)
         return super().event(event)
 
     def enterEvent(self, event):
+        # 鼠标进入立即恢复不透明（不用等 150ms 巡检拍），体验更跟手
         if not self._is_active_opacity:
             self._is_active_opacity = True
             self.setWindowOpacity(OPACITY_ACTIVE)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        # 移出窗口但未点别处时不立刻变透明（避免误触）；仅失焦时透明
+        # 移出窗口由巡检器在下一拍里判透明（不立刻跳，避免悬停边缘抖动）
         super().leaveEvent(event)
 
     # ------------------------------------------------------------------

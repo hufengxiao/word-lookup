@@ -3,6 +3,15 @@
 import os
 import sys
 
+# 强制 UTF-8 输出，避免 Windows cp1252 打印中文报错
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)

@@ -48,6 +48,7 @@ jobs:
             c.executemany('INSERT INTO words(key,key_lower,html) VALUES(?,?,?)', [('apple','apple','<p>apple</p>'),('hello','hello','<p>hello</p>'),('world','world','<p>world</p>')]); c.commit()"
           $env:DB = (Join-Path $PWD 'oxford_test.db')
           $env:QT_QPA_PLATFORM = 'offscreen'
+          $env:PYTHONIOENCODING = 'utf-8'
           python smoke_test.py
           if ($LASTEXITCODE -ne 0) { Write-Error "GUI 逻辑冒烟失败"; exit 1 }
           if (-not (Test-Path smoke_result.txt)) { Write-Error "未生成 smoke_result.txt"; exit 1 }

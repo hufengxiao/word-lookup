@@ -273,9 +273,10 @@ def bootstrap(app, argv) -> int:
     if sys.platform == "win32":
         try:
             from hotkey.win_hotkey import GlobalHotkey
-            gh = GlobalHotkey(["CTRL", "SHIFT"], "M")
-            gh.on_press = bridge.toggleRequested.emit
-            gh.start(wait=True)   # 阻塞到确认注册成功/失败
+            # 直接在主线程回调 toggle（经 QAbstractNativeEventFilter 触发，最可靠）
+            gh = GlobalHotkey(["CTRL", "SHIFT"], "M", bridge.toggleRequested.emit)
+            gh.register()
+            app.installNativeEventFilter(gh)
             write_log("[bootstrap] hotkey registered")
         except Exception as e:  # noqa: BLE001
             write_log("[bootstrap] hotkey register FAILED: " + str(e))
@@ -387,7 +388,8 @@ def main():
         gh = getattr(app, "_gh", None)
         if gh:
             try:
-                gh.close()
+                app.removeNativeEventFilter(gh)
+                gh.unregister()
             except Exception:
                 pass
     return rc

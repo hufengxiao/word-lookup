@@ -25,6 +25,7 @@ class DetailWindow(QWidget):
             | Qt.WindowTitleHint
             | Qt.WindowMinMaxButtonsHint
             | Qt.WindowCloseButtonHint
+            | Qt.WindowStaysOnTopHint
         )
         self.resize(640, 720)
 
@@ -77,12 +78,24 @@ class DetailWindow(QWidget):
 
     def set_html(self, word: str, html: str):
         self.set_word(word)
-        if html:
-            # 去掉外链的 css/js（QTextBrowser 无法加载），保留正文结构
-            cleaned = self._clean_html(html)
-            self._browser.setHtml(cleaned)
-        else:
-            self._browser.setHtml(f"<p>未找到：{word}</p>")
+        if not html:
+            self._browser.setHtml(f"<div style='font:15px sans-serif;padding:20px'>未找到：{word}</div>")
+            return
+        cleaned = self._clean_html(html)
+        # QTextBrowser 不加载外链 css，注入一份可读基础样式，避免挤成一团
+        base_css = (
+            "body{font-family:'Segoe UI',sans-serif;font-size:15px;line-height:1.6;"
+            "color:#222;padding:18px 22px;background:#ffffff;}"
+            "h1{font-size:26px;color:#111;margin:4px 0 10px;}"
+            "h2{font-size:19px;color:#1a1a1a;margin:14px 0 6px;}"
+            "h3{font-size:16px;color:#222;margin:12px 0 4px;}"
+            ".phon,span{color:#555;} .pos{color:#7a7a7a;font-style:italic;}"
+            "table{border-collapse:collapse;} td,th{padding:2px 8px;}"
+            "ol,ul{margin:4px 0 8px;} li{margin:2px 0;}"
+            "img{max-width:100%;}"
+        )
+        self._browser.document().setDefaultStyleSheet(base_css)
+        self._browser.setHtml(cleaned)
 
     @staticmethod
     def _clean_html(html: str) -> str:

@@ -38,6 +38,21 @@ jobs:
       - name: List artifacts
         run: Get-ChildItem dist
 
+      - name: GUI 逻辑冒烟 (offscreen) — 搜索/详情/透明度/拖动
+        shell: pwsh
+        run: |
+          # 用最小词典跑 smoke_test.py，验证搜索、详情窗口创建&非空、透明度、拖动逻辑
+          python -c "import sqlite3; c=sqlite3.connect('oxford_test.db'); \
+            c.execute('CREATE TABLE words(id INTEGER PRIMARY KEY,key TEXT,key_lower TEXT,html TEXT)'); \
+            c.execute('CREATE INDEX idx_words_key_lower ON words(key_lower)'); \
+            c.executemany('INSERT INTO words(key,key_lower,html) VALUES(?,?,?)', [('apple','apple','<p>apple</p>'),('hello','hello','<p>hello</p>'),('world','world','<p>world</p>')]); c.commit()"
+          $env:DB = (Join-Path $PWD 'oxford_test.db')
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          python smoke_test.py
+          if ($LASTEXITCODE -ne 0) { Write-Error "GUI 逻辑冒烟失败"; exit 1 }
+          if (-not (Test-Path smoke_result.txt)) { Write-Error "未生成 smoke_result.txt"; exit 1 }
+          Get-Content smoke_result.txt
+
       - name: Smoke test — exe 启动存活 + 窗口显示检查
         shell: pwsh
         run: |

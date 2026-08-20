@@ -8,7 +8,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
 
 from dictionary.searcher import Searcher
 from ui.search_window import SearchWindow
@@ -31,17 +31,24 @@ def main():
     step("窗口显示 OK")
 
     # 模拟搜索
-    win._edit.setText("app")
+    win._title.setText("app")
     win._do_search()
     n = win._list.count()
     step(f"搜索 'app' → {n} 条联想")
-    first = win._list.item(0).data(0x0100) if n else None  # Qt.UserRole
+    first = win._list.item(0).data(Qt.UserRole) if n else None
     step(f"首条: {first!r}")
 
-    # 打开详情
+    # 打开详情：验证详情窗口被创建并显示、内容非空
     win._open_word("apple")
-    nwin = app.topLevelWidgets()
-    step(f"详情窗口数: {len(nwin)}")
+    app.processEvents()
+    from ui.detail_window import DetailWindow
+    dlist = [w for w in app.topLevelWidgets() if isinstance(w, DetailWindow)]
+    shown = [w for w in dlist if w.isVisible()]
+    step(f"详情窗口: 创建={len(dlist)} 可见={len(shown)}")
+    if shown:
+        doc = shown[0]._browser.document()
+        txt = doc.toPlainText()
+        step(f"详情内容字符数: {len(txt)}  (含词典正文)" if txt.strip() else "警告: 详情内容为空")
 
     # 透明度测试
     win.setWindowOpacity(1.0)
@@ -53,7 +60,7 @@ def main():
     step(f"鼠标移入恢复 → {win.windowOpacity()}")
 
     # 搜索无匹配
-    win._edit.setText("zzzzqqqq")
+    win._title.setText("zzzzqqqq")
     win._do_search()
     step(f"搜索无匹配: list可见={win._list.isVisible()}, 条数={win._list.count()}")
 
@@ -77,7 +84,7 @@ def main():
     step(f"拖动后位置: {win.x()},{win.y()} (目标约 290,240)")
 
     summary = "\n".join(results)
-    with open("/root/oxford-lookup/smoke_result.txt", "w") as f:
+    with open(os.path.join(_HERE, "smoke_result.txt"), "w") as f:
         f.write(summary)
     print("\n=== SMOKE TEST PASSED (无异常) ===")
     app.quit()

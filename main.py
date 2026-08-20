@@ -273,13 +273,13 @@ def bootstrap(app, argv) -> int:
     if sys.platform == "win32":
         try:
             from hotkey.win_hotkey import GlobalHotkey
-            # 直接在主线程回调 toggle（经 QAbstractNativeEventFilter 触发，最可靠）
-            gh = GlobalHotkey(["CTRL", "SHIFT"], "M", bridge.toggleRequested.emit)
-            gh.register()
-            app.installNativeEventFilter(gh)
+            # 独立线程 + GetMessageW 监听 WM_HOTKEY，回调经信号跨线程投递到主线程
+            gh = GlobalHotkey(["CTRL", "SHIFT"], "M", bridge.toggleRequested.emit, log=write_log)
+            gh.start(wait=True)   # 阻塞到注册结果确定
             write_log("[bootstrap] hotkey registered")
         except Exception as e:  # noqa: BLE001
             write_log("[bootstrap] hotkey register FAILED: " + str(e))
+            gh = None
 
     # 托盘图标：后台驻留时的可见入口（右键菜单打开/退出）
     _setup_tray(app, window, gh)
@@ -388,8 +388,7 @@ def main():
         gh = getattr(app, "_gh", None)
         if gh:
             try:
-                app.removeNativeEventFilter(gh)
-                gh.unregister()
+                gh.stop()
             except Exception:
                 pass
     return rc

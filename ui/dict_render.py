@@ -137,60 +137,73 @@ def convert_dict_html(html: str) -> str:
     if not frag:
         return _fallback(html)
 
-    # 重组: 词头/词性/音标/释义+中文(按序配对), 例句另提取
-    head = None
-    pos = None
-    phons = []
-    senses = []   # list of [def, chn]
-    cur_def = None
+    # 重组: 每个 <h1>(headword) 开启一个新的词块(词性/同形词).
+    # 牛津词典按词性/同形词拆成多个 <div class="entry">, 每个 entry 以 h1 开头.
+    entries = []   # 每个: {"pos": set, "phons": [], "senses": [[def, chn],...]}
+    cur = None
     for kind, text in frag:
-        if kind in ("headword", "phon", "pos", "def", "chn"):
-            if kind == "headword":
-                head = head or text
-            elif kind == "pos":
-                pos = pos or text
-            elif kind == "phon":
-                if text not in phons:
-                    phons.append(text)
-            elif kind == "def":
-                senses.append([text, ""])
-                cur_def = senses[-1]
-            elif kind == "chn":
-                if cur_def is not None and not cur_def[1] and cur_def[0]:
-                    cur_def[1] = text
-                elif senses:
-                    senses[-1][1] = text
+        if kind == "headword":
+            cur = {"pos": "", "phons": [], "defs": [], "cur_def": None, "head": text}
+            entries.append(cur)
+            continue
+        if cur is None:
+            continue
+        if kind == "pos":
+            if not cur["pos"]:
+                cur["pos"] = text
+        elif kind == "phon":
+            cur["phons"].append(text)
+        elif kind == "def":
+            cur["defs"].append([text, ""])
+            cur["cur_def"] = cur["defs"][-1]
+        elif kind == "chn":
+            if cur["cur_def"] is not None and not cur["cur_def"][1] and cur["cur_def"][0]:
+                cur["cur_def"][1] = text
+            elif cur["defs"]:
+                cur["defs"][-1][1] = text
+
+    if not entries:
+        return _fallback(html)
+
+    # 若整个词条只有一个词头(单数词条), 归一化
+    head_disp = entries[0].get("head", "") or ""
+
+    # 过滤既无词性也无释义的空词块(牛津里偶有空 <div class=entry>)
+    entries = [e for e in entries if e["defs"] or e["pos"]]
 
     parts = [_HEADER, "<html><head><meta charset='utf-8'></head><body>", _STYLE]
 
-    # 标题
-    t = f"<h1>{_esc(head or '')}"
-    if pos:
-        t += f" <span class='pos'>{_esc(pos)}</span>"
-    parts.append(t + "</h1>")
+    # ---------- 宿主大标题 ----------
+    parts.append(f"<h1>{_esc(head_disp)}</h1>")
 
-    # 音标(拆开连续的 IPA 项 + 去重, 用 · 分隔)
-    uniq_ph = _split_phon(phons)
-    if uniq_ph:
-        parts.append("<div class='phonrow'>" +
-                     "<span class='sep'>·</span>".join(
-                         f"<span class='phon'>{_esc(x)}</span>" for x in uniq_ph[:2])
-                     + "</div>")
+    for ei, e in enumerate(entries):
+        # 第0个词块的词性跟在 h1 后; 之后的词块独立小节
+        pos_txt = _esc(e["pos"]) if e["pos"] else ""
+        if ei == 0:
+            if pos_txt:
+                parts.append(
+                    f"<div class='posline'><span class='posband'>{pos_txt}</span>"
+                    + _ph_html(e["phons"]) + "</div>")
+            else:
+                parts.append(_ph_html(e["phons"]))
+        else:
+            # 后续词块: 醒目的小节头(词性+音标), 以分隔视觉
+            parts.append(f"<div class='posline possep'>"
+                         f"<span class='posband'>{pos_txt or '·'}</span>"
+                         + _ph_html(e["phons"]) + "</div>")
 
-    # 释义
-    if senses:
-        parts.append("<div class='senses'>")
-        for i, (d, c) in enumerate(senses, 1):
-            if not d and not c:
-                continue
-            parts.append("<div class='sense'>")
-            parts.append(f"<span class='sensenum'>{i}.</span>")
-            if d:
-                parts.append(f"<span class='def'>{_esc(d)}</span>")
-            if c:
-                parts.append(f"<div class='chn'>{_esc(c)}</div>")
-            parts.append("</div>")
-        parts.append("</div>")
+        # 该词块的所有释义
+        if e["defs"]:
+            for i, (d, c) in enumerate(e["defs"], 1):
+                if not d and not c:
+                    continue
+                parts.append("<div class='sense'>")
+                parts.append(f"<span class='sensenum'>{i}.</span>")
+                if d:
+                    parts.append(f"<span class='def'>{_esc(d)}</span>")
+                if c:
+                    parts.append(f"<div class='chn'>{_esc(c)}</div>")
+                parts.append("</div>")
 
     # 例句
     extra = _extract_examples(html)
@@ -202,6 +215,16 @@ def convert_dict_html(html: str) -> str:
 
     parts.append("</body></html>")
     return "\n".join(parts)
+
+
+def _ph_html(phons):
+    """音标组 HTML(拆开连续 IPA + 去重 + 用 · 分隔)."""
+    uniq = _split_phon(phons)
+    if not uniq:
+        return ""
+    inner = "<span class='sep'>·</span>".join(
+        f"<span class='phon'>{_esc(x)}</span>" for x in uniq[:2])
+    return f"<div class='phonrow'>{inner}</div>"
 
 
 def _extract_examples(html: str) -> list:
@@ -260,6 +283,10 @@ _STYLE = (
     "span.pos{font-size:15px;color:#2b6cb0;font-style:italic;margin-left:8px;font-weight:400;}"
     "div.phonrow{margin:2px 0 10px;} span.phon{color:#7a7a7a;font-size:14px;margin-right:6px;}"
     "span.sep{color:#c0c0c0;margin:0 8px;}"
+    "div.posline{margin:2px 0 10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}"
+    "span.posband{display:inline-block;background:#2b6cb0;color:#fff;font-style:italic;"
+    "font-weight:600;padding:2px 10px;border-radius:10px;font-size:13px;}"
+    "div.possep{border-top:1px dashed #d0d7e2;margin-top:14px;padding-top:12px;}"
     "div.senses{} div.sense{margin:1px 0 10px;padding:7px 11px;background:#f6f8fc;"
     "border-left:3px solid #c7d2fe;border-radius:4px;}"
     "span.sensenum{color:#7c8db5;font-weight:700;margin-right:8px;font-size:13px;}"

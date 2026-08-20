@@ -77,6 +77,21 @@ def main():
     step(f"dict_render: h1={'<h1>' in styled} 释义卡片={n_sense}")
     step("dict_render: 生成可读排版 OK" if "<h1>" in styled else "警告: 渲染无词头")
 
+    # 多词性健壮性: 喂一个含多词性(section)的真实结构, 应生成多个词性小节且不崩
+    multi = ("<div id='entryContent'><div class='entry'><h1 class='headword'>run</h1>"
+             "<span class='pos'>verb</span><ol class='sense_single'>"
+             "<li class='sense'><span class='def'>to move fast</span><defT><chn>跑</chn></defT></li>"
+             "</ol></div><div class='entry'><h1 class='headword'>run</h1>"
+             "<span class='pos'>noun</span><ol class='sense_single'>"
+             "<li class='sense'><span class='def'>an act of running</span><defT><chn>跑步</chn></defT></li>"
+             "</ol></div></div>")
+    mout = convert_dict_html(multi)
+    n_pos = mout.count("class='posband'")
+    m_sense = mout.count("class='sense'")
+    step(f"dict_render 多词性: 词性小节={n_pos} (期望>=2) 释义卡片={m_sense}")
+    if n_pos < 2:
+        raise RuntimeError("FAIL: 多词性词条渲染未生成多个词性小节")
+
     # 重定向跟随: lookup(stepsons) 应命中主词条(或至少不崩溃) — mini db 无重定向则跳过
     try:
         disp, _h = searcher.lookup("stepsons")

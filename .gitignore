@@ -27,3 +27,4 @@ Thumbs.db
 .vscode/smoke_result.txt
 *.db
 __pycache__/
+.ssh_run.py

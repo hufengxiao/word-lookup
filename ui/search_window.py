@@ -10,7 +10,7 @@
 背景用 QPainter 手绘（不依赖样式表 rgba 背景映射），确保卡片底色在
 Windows + 无边框置顶窗口下稳定可见。
 """
-from PySide6.QtCore import Qt, QTimer, QEvent, QRect
+from PySide6.QtCore import Qt, QTimer, QEvent, QRect, QSize
 from PySide6.QtGui import (
     QFont, QPainter, QColor, QKeyEvent, QLinearGradient, QBrush,
 )
@@ -43,39 +43,35 @@ class _ResultDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self._key_font = QFont("Segoe UI", 15, QFont.Bold)
         self._sum_font = QFont("Segoe UI", 13)
-        self._key_len = 0
+        # 预建颜色(避免每帧重建字符串颜色的开销)
+        self._bg_on = QColor(59, 130, 246, 255)
+        self._key_on = QColor("#ffffff")
+        self._key_off = QColor("#ebe9ff")
+        self._sum_on = QColor(255, 255, 255, 200)
+        self._sum_off = QColor("#ffd98a")
 
     def sizeHint(self, option, index):
-        base = super().sizeHint(option, index)
-        base.setWidth(max(base.width(), 320))
-        base.setHeight(max(base.height(), 42))
-        return base
+        w = max(option.rect.width(), 320)
+        return QSize(max(w, 320), 42)
 
     def paint(self, painter, option, index):
-        painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
         r = option.rect.adjusted(6, 3, -6, -3)
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
 
-        # 选中背景 (圆角)
+        # 选中背景 (圆角)；未选中时把背景填成卡片色(透明交给窗口)
+        painter.setPen(Qt.NoPen)
         if selected:
-            painter.setBrush(QColor(59, 130, 246, 255))
-            painter.setPen(Qt.NoPen)
+            painter.setBrush(self._bg_on)
             painter.drawRoundedRect(r, 9, 9)
-        else:
-            painter.setPen(Qt.NoPen)
 
-        key = index.data(Qt.DisplayRole) or (index.data(Qt.UserRole) or "")
+        key = index.data(Qt.UserRole) or (index.data(Qt.DisplayRole) or "")
         summ = index.data(Qt.UserRole + 1) or ""
 
-        # 词头文字颜色
-        kc = QColor("#ffffff") if selected else QColor("#ebe9ff")
-        # 释义颜色: 选中时白(半透明)，未选中时浅金色以便文字中英文混杂时醒目
-        sum_color = (
-            QColor(255, 255, 255, 200) if selected else QColor("#ffd98a")
-        )
+        kc = self._key_on if selected else self._key_off
+        sum_color = self._sum_on if selected else self._sum_off
 
-        # 文本基线
+        # 词头
         painter.setFont(self._key_font)
         kx = r.left() + 8
         km = painter.fontMetrics().horizontalAdvance(key) + 8
@@ -83,16 +79,15 @@ class _ResultDelegate(QStyledItemDelegate):
         painter.drawText(QRect(kx, r.top(), km, r.height()),
                          Qt.AlignLeft | Qt.AlignVCenter, key)
 
-        # 释义（紧跟词后，剩余空间不够则省略）
+        # 释义
         if summ:
             painter.setFont(self._sum_font)
             painter.setPen(sum_color)
             avail = r.right() - (kx + km) - 4
-            avail = max(avail, 0)
-            elide = painter.fontMetrics().elidedText(summ, Qt.ElideRight, avail)
-            painter.drawText(QRect(kx + km, r.top(), avail, r.height()),
-                             Qt.AlignLeft | Qt.AlignVCenter, elide)
-        painter.restore()
+            if avail > 0:
+                elide = painter.fontMetrics().elidedText(summ, Qt.ElideRight, avail)
+                painter.drawText(QRect(kx + km, r.top(), avail, r.height()),
+                                 Qt.AlignLeft | Qt.AlignVCenter, elide)
 
 
 class SearchWindow(QFrame):
@@ -181,11 +176,18 @@ class SearchWindow(QFrame):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        r = QLinearGradient(0, 0, 0, self.height())
-        r.setColorAt(0, QColor(52, 53, 65, 246))
-        r.setColorAt(1, QColor(27, 28, 36, 246))
-        painter.setBrush(QBrush(r))
-        painter.setPen(QColor(255, 255, 255, 40))
+        # 复用缓存的颜色/边框，避免每帧重建临时对象（选块拖动时显著减卡顿）
+        grad = getattr(self, "_grad_brush", None)
+        if grad is None:
+            g = QLinearGradient(0, 0, 0, 1)
+            g.setCoordinateMode(QLinearGradient.CoordinateMode.ObjectBoundingMode)
+            g.setColorAt(0, QColor(52, 53, 65, 246))
+            g.setColorAt(1, QColor(27, 28, 36, 246))
+            self._grad_brush = QBrush(g)
+            self._border_pen = QColor(255, 255, 255, 40)
+            grad = self._grad_brush
+        painter.setBrush(grad)
+        painter.setPen(self._border_pen)
         painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), CARD_RADIUS, CARD_RADIUS)
         painter.end()
         super().paintEvent(event)

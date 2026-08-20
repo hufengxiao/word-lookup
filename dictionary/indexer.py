@@ -20,6 +20,7 @@ import sqlite3
 import time
 
 from .mdx_parser import MDX
+from .summary import extract_summary
 
 
 class IndexBuilder:
@@ -48,7 +49,8 @@ class IndexBuilder:
                 id INTEGER PRIMARY KEY,
                 key TEXT NOT NULL,
                 key_lower TEXT NOT NULL,
-                html TEXT NOT NULL
+                html TEXT NOT NULL,
+                summary TEXT NOT NULL DEFAULT ''
             )"""
         )
         cur.execute("CREATE INDEX idx_words_key_lower ON words(key_lower)")
@@ -63,18 +65,21 @@ class IndexBuilder:
                 key_s = key_text.decode("utf-8", "replace")
             except Exception:
                 key_s = key_text
-            batch.append((key_s, key_s.lower(), html.decode("utf-8", "replace")))
+            html_s = html.decode("utf-8", "replace")
+            batch.append((key_s, key_s.lower(), html_s, extract_summary(html_s)))
             n += 1
             if len(batch) >= batch_size:
                 cur.executemany(
-                    "INSERT INTO words(key,key_lower,html) VALUES(?,?,?)", batch
+                    "INSERT INTO words(key,key_lower,html,summary) VALUES(?,?,?,?)",
+                    batch,
                 )
                 batch = []
                 if verbose and n % 50000 < batch_size:
                     print(f"  已写入 {n} 条，累计 {time.time()-t_write:.1f}s")
         if batch:
             cur.executemany(
-                "INSERT INTO words(key,key_lower,html) VALUES(?,?,?)", batch
+                "INSERT INTO words(key,key_lower,html,summary) VALUES(?,?,?,?)",
+                batch,
             )
         conn.commit()
 

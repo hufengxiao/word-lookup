@@ -47,6 +47,9 @@ def main():
     step(f"搜索 'app' → {n} 条联想")
     first = win._list.item(0).data(Qt.UserRole) if n else None
     step(f"首条: {first!r}")
+    first_sum = win._list.item(0).data(Qt.UserRole + 1) if n else ""
+    step(f"首条释义预览: {first_sum!r}")
+    assert isinstance(first_sum, str), "FAIL: 结果缺少释义预览数据(summary)"
 
     # 键盘导航: 在输入框按下 ↓/↑ 应切换联想选中项（直接给列表喂2个候选，
     # 避免 mini db 前缀结果只有1条的局限）

@@ -2,3 +2,4 @@ smoke_result.txt
 *.db
 __pycache__/
 WordLookup.log
+_win_*.png

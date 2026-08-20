@@ -110,6 +110,51 @@ def build_from_mdx(mdx_path: str, db_path: str, verbose=True):
     return IndexBuilder(mdx_path, db_path).build(verbose=verbose)
 
 
+def has_summary_col(db_path: str) -> bool:
+    """判断 db 的 words 表是否已有 summary 列。"""
+    import sqlite3
+    try:
+        conn = sqlite3.connect(db_path)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(words)")]
+        conn.close()
+        return "summary" in cols
+    except Exception:
+        return False
+
+
+def backfill_summary(db_path: str, batch_size: int = 4000):
+    """为一次构建的老 db 就地补 summary 列(基于已存储 html, 无需 mdx)。
+
+    返回 (changed, filled)：changed=True 表示加了列并回填；filled 为实际条数。
+    进程内同步执行(会占用调用线程)，适合放入子进程跑。
+    """
+    import sqlite3
+
+    if has_summary_col(db_path):
+        return False, 0
+    from .summary import extract_summary
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("ALTER TABLE words ADD COLUMN summary TEXT NOT NULL DEFAULT ''")
+    conn.commit()
+    cur = conn.execute("SELECT id, html FROM words")  # html 可能缺
+    rows = []
+    filled = 0
+    for rid, html in cur:
+        s = extract_summary(html or "")
+        if s:
+            filled += 1
+        rows.append((s, rid))
+        if len(rows) >= batch_size:
+            conn.executemany("UPDATE words SET summary=? WHERE id=?", rows)
+            rows = []
+    if rows:
+        conn.executemany("UPDATE words SET summary=? WHERE id=?", rows)
+    conn.commit()
+    conn.close()
+    return True, filled
+
+
 if __name__ == "__main__":
     import sys
 

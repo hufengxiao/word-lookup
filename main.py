@@ -124,6 +124,120 @@ def _build_worker_proc(mdx_path: str, db_path: str, result_q):
             pass
 
 
+def _backfill_worker_proc(db_path: str, result_q):
+    """(子进程入口) 就地补 summary 列(利用已存储 html，无需 mdx)。"""
+    try:
+        import os as _os
+        _root = _os.path.dirname(_os.path.abspath(__file__))
+        if _root not in sys.path:
+            sys.path.insert(0, _root)
+        from dictionary.indexer import backfill_summary
+
+        changed, filled = backfill_summary(db_path)
+        result_q.put(("done", (changed, filled)))
+    except Exception as e:  # noqa: BLE001
+        try:
+            result_q.put(("error", f"{type(e).__name__}: {e}"))
+        except Exception:
+            pass
+
+
+def maybe_backfill_summary(db_path: str):
+    """若 db 缺 summary 列(旧版构建的老数据库)，就地补列并回填。
+
+    利用已存储的 html，无需 mdx。在子进程里做(类同 build_from_mdx 的
+    排队+processEvents 模式)，避免像大词典 index 那样阻塞主线程。
+    """
+    from dictionary.indexer import has_summary_col
+
+    if has_summary_col(db_path):
+        return  # 已是新版，无需处理
+
+    write_log("[browse] 词典库缺 summary 列 → 就地补全释义预览…")
+
+    # 小库(如测试/演示)进程内直接补，免去子进程与进度窗；真词典走子进程
+    import sqlite3
+    try:
+        c = sqlite3.connect(db_path)
+        n = c.execute("SELECT COUNT(*) FROM words").fetchone()[0]
+        c.close()
+    except Exception:
+        n = 0
+    if n < 8:
+        from dictionary.indexer import backfill_summary
+        backfill_summary(db_path)
+        write_log("[browse] summary backfill done (in-place, 小库)")
+        return
+
+    from PySide6.QtWidgets import QProgressDialog
+
+    ctx = _mp.get_context("spawn" if sys.platform == "win32" else "fork")
+    result_q = ctx.Queue()
+    proc = ctx.Process(
+        target=_backfill_worker_proc, args=(db_path, result_q), daemon=True
+    )
+    proc.start()
+
+    prog = QProgressDialog(
+        "正在为词典库补全释义预览（首次升级，一次性约 1-2 分钟）…",
+        "取消", 0, 0, None,
+    )
+    prog.setWindowTitle("升级词典")
+    prog.setWindowModality(Qt.WindowModality.NonModal)
+    prog.setMinimumDuration(0)
+    prog.setAutoClose(False)
+    prog.setAutoReset(False)
+    prog.show()
+    QApplication.processEvents()
+
+    outcome = {"err": None}
+    done = {"ok": False}
+
+    def poll():
+        if not result_q.empty():
+            tag, val = result_q.get_nowait()
+            if tag == "error":
+                outcome["err"] = val
+            done["ok"] = True
+            timer.stop()
+            prog.close()
+        elif not proc.is_alive() and not done["ok"]:
+            done["ok"] = True
+            timer.stop()
+            prog.close()
+            outcome["err"] = outcome["err"] or "进程异常退出"
+
+    import time as _t
+    timer = QTimer()
+    timer.setInterval(300)
+    timer.timeout.connect(poll)
+    timer.start()
+
+    while not done["ok"] and prog.wasCanceled() is False:
+        QApplication.processEvents()
+        QApplication.processEvents()
+        _t.sleep(0.05)
+
+    timer.stop()
+    if prog.wasCanceled() and not done["ok"]:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        write_log("[backfill] cancelled by user")
+        raise SystemExit(0)
+    if outcome["err"]:
+        write_log("[backfill] FAILED: " + outcome["err"])
+        from PySide6.QtWidgets import QMessageBox
+        err = QMessageBox()
+        err.setIcon(QMessageBox.Icon.Critical)
+        err.setWindowTitle("升级失败")
+        err.setText(f"无法补全释义预览：\n{outcome['err']}")
+        err.exec()
+        return
+    write_log("[bootstrap] summary backfill done")
+
+
 def build_from_mdx(mdx_path: str) -> str:
     """在子进程中把 .mdx 构建成 oxford.db。
 
@@ -240,6 +354,13 @@ def bootstrap(app, argv) -> int:
                 write_log("[bootstrap] no mdx chosen")
                 return 0
             db_path = build_from_mdx(mdx_path)
+        # 老库(无 summary 列)就地升级出释义预览
+        try:
+            maybe_backfill_summary(db_path)
+        except SystemExit:
+            return 0
+        except Exception as e:  # noqa: BLE001
+            write_log(f"[bootstrap] summary backfill skipped: {e}")
         write_log(f"[bootstrap] db={os.path.basename(db_path)}")
     except SystemExit as e:
         return int(e.code or 0)

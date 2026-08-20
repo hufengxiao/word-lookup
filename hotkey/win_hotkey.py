@@ -85,8 +85,16 @@ class GlobalHotkey(QAbstractNativeEventFilter):
         self._user32.UnregisterHotKey(None, self.id)
 
     def nativeEventFilter(self, event_type, message):
-        if event_type == "windows_generic_MSG":
-            msg = ctypes.cast(int(message), ctypes.POINTER(wt.MSG)).contents
+        # PySide6 在 Windows 上 eventType 是 QByteArray(bytes b"windows_generic_MSG")，
+        # 老版本/某些绑定是 str。两种都兼容，避免类型不匹配导致永不触发。
+        if event_type in (b"windows_generic_MSG", "windows_generic_MSG"):
+            try:
+                addr = int(message) if not isinstance(message, int) else message
+                if addr is None or addr <= 0:
+                    return False, 0
+                msg = ctypes.cast(addr, ctypes.POINTER(wt.MSG)).contents
+            except Exception:  # noqa: BLE001
+                return False, 0
             if msg.message == WM_HOTKEY and msg.wParam == self.id:
                 try:
                     self._cb()

@@ -18,6 +18,8 @@ sys.path.insert(0, _HERE)
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QKeyEvent, QMouseEvent, QPointF
+from PySide6.QtCore import QPoint, QEvent
 
 from dictionary.searcher import Searcher
 from ui.search_window import SearchWindow
@@ -74,15 +76,11 @@ def main():
     step(f"搜索无匹配: list可见={win._list.isVisible()}, 条数={win._list.count()}")
 
     # 键盘事件 (Esc 隐藏)
-    from PySide6.QtGui import QKeyEvent
-    from PySide6.QtCore import Qt
     ev = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key_Escape, Qt.KeyboardModifier.NoModifier)
     win.keyPressEvent(ev)
     step(f"Esc 后隐藏: {not win.isVisible()}")
 
     # 拖动模拟
-    from PySide6.QtGui import QMouseEvent, QPointF
-    from PySide6.QtCore import QPoint, QEvent
     win.show()
     win._dragging = True
     win._drag_offset = QPoint(10, 10)
@@ -90,7 +88,7 @@ def main():
     e = QMouseEvent(QEvent.Type.MouseMove, QPointF(200,150), Qt.MouseButton.NoButton,
                     Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
     win.mouseMoveEvent(e)
-    step(f"拖动后位置: {win.x()},{win.y()} (目标约 290,240)")
+    step(f"拖动后位置: {win.x()},{win.y()} (目标约 190,140)")
 
     summary = "\n".join(results)
     with open(os.path.join(_HERE, "smoke_result.txt"), "w") as f:

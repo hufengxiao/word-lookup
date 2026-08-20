@@ -55,15 +55,24 @@ class Searcher:
             return []
         ql = q.lower()
         out = []
+        has_summary = getattr(self, "_has_summary", None)
+        if has_summary is None:
+            try:
+                cols = self._conn.execute("PRAGMA table_info(words)").fetchall()
+                self._has_summary = any(c["name"] == "summary" for c in cols)
+            except Exception:
+                self._has_summary = False
+            has_summary = self._has_summary
+        sel = "key, key_lower, summary" if has_summary else "key, key_lower, '' as summary"
         with self._lock:
             # 前缀查询（最快，走 B-tree range）
             rows = self._conn.execute(
-                "SELECT key, key_lower FROM words WHERE key_lower >= ? "
+                f"SELECT {sel} FROM words WHERE key_lower >= ? "
                 "AND key_lower < ? ORDER BY key_lower LIMIT ?",
                 (ql, _upper_bound(ql), limit),
             ).fetchall()
             for r in rows:
-                out.append((r["key"], r["key_lower"]))
+                out.append((r["key"], r["summary"] or ""))
             # 前缀不足且允许模糊时，补充受限的子串匹配（潜在慢，谨慎用）
             if fuzzy and len(out) < limit:
                 found = {k for k, _ in out}
@@ -75,7 +84,7 @@ class Searcher:
                 for r in sub:
                     k = r["key"]
                     if k not in found:
-                        out.append((k, k.lower()))
+                        out.append((k, ""))
                         found.add(k)
                     if len(out) >= limit:
                         break

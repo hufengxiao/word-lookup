@@ -10,11 +10,15 @@
 背景用 QPainter 手绘（不依赖样式表 rgba 背景映射），确保卡片底色在
 Windows + 无边框置顶窗口下稳定可见。
 """
-from PySide6.QtCore import Qt, QTimer, QEvent
-from PySide6.QtGui import QFont, QPainter, QColor, QKeyEvent, QLinearGradient, QBrush
+from PySide6.QtCore import Qt, QTimer, QEvent, QRect
+from PySide6.QtGui import (
+    QFont, QPainter, QColor, QKeyEvent, QLinearGradient, QBrush,
+)
 from PySide6.QtWidgets import (
     QFrame, QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout, QHBoxLayout,
+    QStyledItemDelegate,
 )
+from PySide6.QtWidgets import QStyle
 
 from dictionary.searcher import Searcher
 
@@ -27,6 +31,68 @@ SEARCH_DELAY_MS = 60      # 输入去抖
 CARD_RADIUS = 14
 W, H_COLLAPSED = 520, 68   # 长条搜索框尺寸（收起/唤起时）
 H_EXPANDED = 420           # 输入后有结果时展开高度
+
+
+class _ResultDelegate(QStyledItemDelegate):
+    """Spotlight 式结果行：词头加粗醒目 + 右侧紧跟灰色释义预览。
+
+    单词用大字、亮白(选中时)，释义用较暗的灰/浅青色并在空间不足时省略。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._key_font = QFont("Segoe UI", 15, QFont.Bold)
+        self._sum_font = QFont("Segoe UI", 13)
+        self._key_len = 0
+
+    def sizeHint(self, option, index):
+        base = super().sizeHint(option, index)
+        base.setWidth(max(base.width(), 320))
+        base.setHeight(max(base.height(), 42))
+        return base
+
+    def paint(self, painter, option, index):
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        r = option.rect.adjusted(6, 3, -6, -3)
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
+
+        # 选中背景 (圆角)
+        if selected:
+            painter.setBrush(QColor(59, 130, 246, 255))
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(r, 9, 9)
+        else:
+            painter.setPen(Qt.NoPen)
+
+        key = index.data(Qt.DisplayRole) or (index.data(Qt.UserRole) or "")
+        summ = index.data(Qt.UserRole + 1) or ""
+
+        # 词头文字颜色
+        kc = QColor("#ffffff") if selected else QColor("#ebe9ff")
+        # 释义颜色: 选中时白(半透明)，未选中时浅金色以便文字中英文混杂时醒目
+        sum_color = (
+            QColor(255, 255, 255, 200) if selected else QColor("#ffd98a")
+        )
+
+        # 文本基线
+        painter.setFont(self._key_font)
+        kx = r.left() + 8
+        km = painter.fontMetrics().horizontalAdvance(key) + 8
+        painter.setPen(kc)
+        painter.drawText(QRect(kx, r.top(), km, r.height()),
+                         Qt.AlignLeft | Qt.AlignVCenter, key)
+
+        # 释义（紧跟词后，剩余空间不够则省略）
+        if summ:
+            painter.setFont(self._sum_font)
+            painter.setPen(sum_color)
+            avail = r.right() - (kx + km) - 4
+            avail = max(avail, 0)
+            elide = painter.fontMetrics().elidedText(summ, Qt.ElideRight, avail)
+            painter.drawText(QRect(kx + km, r.top(), avail, r.height()),
+                             Qt.AlignLeft | Qt.AlignVCenter, elide)
+        painter.restore()
 
 
 class SearchWindow(QFrame):
@@ -79,13 +145,13 @@ class SearchWindow(QFrame):
 
         # ---- 结果列表 ----
         self._list = QListWidget(self)
+        self._list.setItemDelegate(_ResultDelegate(self._list))
         self._list.setStyleSheet(
             "QListWidget { background: transparent; color: #e8e8e8;"
             " border: none; outline: none; font-size: 15px; }"
-            "QListWidget::item { padding: 7px 14px; margin: 0 8px;}"
-            "QListWidget::item:selected { background: #3b82f6;"
-            " color: white; border-radius: 8px; }"
+            "QListWidget::item { margin: 0 8px; }"
         )
+        self._list.setSpacing(1)
         self._list.hide()
         self._list.itemActivated.connect(self._open_item)
         lay.addWidget(self._list, 1)
@@ -211,9 +277,10 @@ class SearchWindow(QFrame):
             self._list.setCurrentRow(-1)
             return
         self._expand()
-        for key, _kl in rows:
+        for key, summary in rows:
             it = QListWidgetItem(key)
             it.setData(Qt.UserRole, key)
+            it.setData(Qt.UserRole + 1, summary or "")  # 释义预览
             self._list.addItem(it)
         self._list.setCurrentRow(0)
 

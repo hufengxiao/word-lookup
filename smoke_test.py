@@ -49,16 +49,24 @@ def main():
     step(f"首条: {first!r}")
 
     # 打开详情：验证详情窗口被创建并显示、内容非空
+    before = [w.__class__.__name__ for w in app.topLevelWidgets()]
     win._open_word("apple")
     app.processEvents()
+    after = [w.__class__.__name__ for w in app.topLevelWidgets()]
+    step(f"详情前 top: {before}")
+    step(f"详情后 top: {after}")
     from ui.detail_window import DetailWindow
     dlist = [w for w in app.topLevelWidgets() if isinstance(w, DetailWindow)]
-    shown = [w for w in dlist if w.isVisible()]
-    step(f"详情窗口: 创建={len(dlist)} 可见={len(shown)}")
+    detail_refs = getattr(win, "_details", [])
+    step(f"详情窗口: top-level={len(dlist)} 持有引用={len(detail_refs)}")
+    shown = [w for w in dlist+detail_refs if w.isVisible()]
+    step(f"详情可见: {len(shown)}")
     if shown:
         doc = shown[0]._browser.document()
         txt = doc.toPlainText()
-        step(f"详情内容字符数: {len(txt)}  (含词典正文)" if txt.strip() else "警告: 详情内容为空")
+        step(f"详情内容字符数: {len(txt)}" if txt.strip() else "警告: 详情内容为空")
+    else:
+        raise RuntimeError("FAIL: 详情窗口未显示 (top-level 或引用列表均为空)")
 
     # 透明度测试
     win.setWindowOpacity(1.0)
@@ -90,7 +98,7 @@ def main():
     step(f"拖动后位置: {win.x()},{win.y()} (目标约 190,140)")
 
     summary = "\n".join(results)
-    with open(os.path.join(_HERE, "smoke_result.txt"), "w") as f:
+    with open(os.path.join(_HERE, "smoke_result.txt"), "w", encoding="utf-8") as f:
         f.write(summary)
     print("\n=== SMOKE TEST PASSED (无异常) ===")
     app.quit()

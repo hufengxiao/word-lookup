@@ -222,6 +222,10 @@ class SearchWindow(QFrame):
         detail.show()
         detail.raise_()
         detail.activateWindow()
+        # 持有引用，避免局部变量被回收导致窗口消失
+        if not hasattr(self, "_details"):
+            self._details = []
+        self._details.append(detail)
 
     def _place_detail(self, detail):
         """把详情窗口放到搜索窗右侧；若会越界则放到下方（都在屏内）。"""

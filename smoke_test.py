@@ -48,6 +48,23 @@ def main():
     first = win._list.item(0).data(Qt.UserRole) if n else None
     step(f"首条: {first!r}")
 
+    # 键盘导航: 在输入框按下 ↓/↑ 应切换联想选中项（直接给列表喂2个候选，
+    # 避免 mini db 前缀结果只有1条的局限）
+    win._list.clear()
+    from PySide6.QtWidgets import QListWidgetItem
+    win._list.addItem(QListWidgetItem("alpha")); win._list.addItem(QListWidgetItem("beta"))
+    win._list.show()
+    win._list.setCurrentRow(0)
+    nav = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier)
+    win.eventFilter(win._title, nav)
+    row_after_down = win._list.currentRow()
+    nav_up = QKeyEvent(QEvent.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.NoModifier)
+    win.eventFilter(win._title, nav_up)
+    row_after_up = win._list.currentRow()
+    step(f"键盘导航: Down后row={row_after_down} Up后row={row_after_up} (应 1 和 0)")
+    if not (row_after_down == 1 and row_after_up == 0):
+        raise RuntimeError("FAIL: ↑/↓ 未切换联想选中项")
+
     # 打开详情：验证详情窗口被创建并显示、内容非空
     before = [w.__class__.__name__ for w in app.topLevelWidgets()]
     win._open_word("apple")

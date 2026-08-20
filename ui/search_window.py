@@ -65,6 +65,8 @@ class SearchWindow(QFrame):
         self._title.textChanged.connect(self._on_text_changed)
         self._title.returnPressed.connect(self._on_return)
         self._title.setFocusPolicy(Qt.StrongFocus)
+        # 拦截 ↑/↓/Esc/Enter，实现 Spotlight 式键盘导航（焦点一直在输入框）
+        self._title.installEventFilter(self)
         top.addWidget(self._title, 1)
 
         # 底部拖动手柄（三条杠），也可直接拖；同时是一个可见的拖动把手
@@ -279,6 +281,39 @@ class SearchWindow(QFrame):
             event.accept()
             return
         super().keyPressEvent(event)
+
+    def eventFilter(self, obj, event):
+        """拦截输入框的 →/↓/↑/Esc/Enter，实现 Spotlight 式键盘导航。
+
+        焦点始终停在搜索框(QLineEdit)，因此选择联想列表要在这儿做，
+        而不是等着 widget 自行获得键盘焦点。
+        """
+        if obj is self._title and event.type() == QEvent.Type.KeyPress:
+            return self._handle_nav_key(event)
+        return super().eventFilter(obj, event)
+
+    def _handle_nav_key(self, event: "QKeyEvent") -> bool:
+        """处理导航按键。返回 True 表示已消费。"""
+        key = event.key()
+        if key in (Qt.Key.Key_Down, Qt.Key.Key_Up) and self._list.isVisible():
+            n = self._list.count()
+            if n <= 0:
+                return False
+            row = self._list.currentRow()
+            if row < 0:
+                row = 0
+            else:
+                row += 1 if key == Qt.Key.Key_Down else -1
+            row = max(0, min(n - 1, row))
+            self._list.setCurrentRow(row)
+            event.accept()
+            return True
+        if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
+            # 回车打开当前选中（未选中则用输入框文本）
+            self._on_return()
+            event.accept()
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # 透明度：失焦变透明，鼠标移入恢复

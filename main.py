@@ -269,6 +269,17 @@ def bootstrap(app, argv) -> int:
     window = SearchWindow(searcher)
     bridge = AppBridge(window)
 
+    # 关键：bootstrap 是普通函数，返回后局部变量会被 Python 垃圾回收。
+    # 必须把 window/bridge/searcher/gh 存到 app 上持有引用，否则信号源
+    # (bridge) / 窗口会被回收 → 热键回调报 "Signal source has been deleted"、
+    # 详情窗口消失等诡异现象。统一挂到 app._app_refs 容器。
+    app._app_refs = {
+        "searcher": searcher,
+        "window": window,
+        "bridge": bridge,
+        "gh": None,
+    }
+
     gh = None
     if sys.platform == "win32":
         try:
@@ -280,6 +291,7 @@ def bootstrap(app, argv) -> int:
         except Exception as e:  # noqa: BLE001
             write_log("[bootstrap] hotkey register FAILED: " + str(e))
             gh = None
+    app._app_refs["gh"] = gh
 
     # 托盘图标：后台驻留时的可见入口（右键菜单打开/退出）
     _setup_tray(app, window, gh)

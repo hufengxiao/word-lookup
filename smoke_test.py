@@ -17,9 +17,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QKeyEvent, QMouseEvent, QPointF
-from PySide6.QtCore import QPoint, QEvent
+from PySide6.QtCore import QTimer, Qt, QPoint, QPointF, QEvent
+from PySide6.QtGui import QKeyEvent, QMouseEvent
 
 from dictionary.searcher import Searcher
 from ui.search_window import SearchWindow

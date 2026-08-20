@@ -24,4 +24,6 @@ Thumbs.db
 
 # IDE
 .idea/
-.vscode/
+.vscode/smoke_result.txt
+*.db
+__pycache__/

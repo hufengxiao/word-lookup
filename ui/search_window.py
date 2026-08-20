@@ -204,8 +204,7 @@ class SearchWindow(QFrame):
         if not rows:
             self._expand()
             it = QListWidgetItem("无匹配结果")
-            it.setFlags(Qt.NoItemFlags)
-            it.setEnabled(False)
+            it.setFlags(Qt.NoItemFlags)  # 占位项: 不可选/不可激活
             self._list.addItem(it)
             self._list.setCurrentRow(-1)
             return

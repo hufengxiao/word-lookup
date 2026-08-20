@@ -27,7 +27,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal, Qt
 from PySide6.QtWidgets import QApplication
 
 from dictionary.searcher import Searcher
@@ -145,8 +145,10 @@ def _backfill_worker_proc(db_path: str, result_q):
 def maybe_backfill_summary(db_path: str):
     """若 db 缺 summary 列(旧版构建的老数据库)，就地补列并回填。
 
-    利用已存储的 html，无需 mdx。在子进程里做(类同 build_from_mdx 的
-    排队+processEvents 模式)，避免像大词典 index 那样阻塞主线程。
+    关键设计：**纯同步、在主线程、一次连接**。在任何只读连接(Searcher)打开之前
+    就把列补好，避免子进程写入与主线程读取之间的 "database is locked" 竞态。
+
+    利用已存储的 html，无需 mdx。处理期间用 processEvents 保持窗口响应。
     """
     from dictionary.indexer import has_summary_col
 
@@ -154,33 +156,14 @@ def maybe_backfill_summary(db_path: str):
         return  # 已是新版，无需处理
 
     write_log("[browse] 词典库缺 summary 列 → 就地补全释义预览…")
-
-    # 小库(如测试/演示)进程内直接补，免去子进程与进度窗；真词典走子进程
-    import sqlite3
-    try:
-        c = sqlite3.connect(db_path)
-        n = c.execute("SELECT COUNT(*) FROM words").fetchone()[0]
-        c.close()
-    except Exception:
-        n = 0
-    if n < 8:
-        from dictionary.indexer import backfill_summary
-        backfill_summary(db_path)
-        write_log("[browse] summary backfill done (in-place, 小库)")
-        return
-
-    from PySide6.QtWidgets import QProgressDialog
-
-    ctx = _mp.get_context("spawn" if sys.platform == "win32" else "fork")
-    result_q = ctx.Queue()
-    proc = ctx.Process(
-        target=_backfill_worker_proc, args=(db_path, result_q), daemon=True
+    from PySide6.QtWidgets import (
+        QProgressDialog,
+        QApplication as _QApp,
     )
-    proc.start()
 
     prog = QProgressDialog(
-        "正在为词典库补全释义预览（首次升级，一次性约 1-2 分钟）…",
-        "取消", 0, 0, None,
+        "正在为词典库补全释义预览（首次升级，仅需一次，请稍候…）",
+        None, 0, 0, None,
     )
     prog.setWindowTitle("升级词典")
     prog.setWindowModality(Qt.WindowModality.NonModal)
@@ -188,55 +171,58 @@ def maybe_backfill_summary(db_path: str):
     prog.setAutoClose(False)
     prog.setAutoReset(False)
     prog.show()
-    QApplication.processEvents()
+    _QApp.processEvents()
 
-    outcome = {"err": None}
-    done = {"ok": False}
-
-    def poll():
-        if not result_q.empty():
-            tag, val = result_q.get_nowait()
-            if tag == "error":
-                outcome["err"] = val
-            done["ok"] = True
-            timer.stop()
-            prog.close()
-        elif not proc.is_alive() and not done["ok"]:
-            done["ok"] = True
-            timer.stop()
-            prog.close()
-            outcome["err"] = outcome["err"] or "进程异常退出"
-
-    import time as _t
-    timer = QTimer()
-    timer.setInterval(300)
-    timer.timeout.connect(poll)
-    timer.start()
-
-    while not done["ok"] and prog.wasCanceled() is False:
-        QApplication.processEvents()
-        QApplication.processEvents()
-        _t.sleep(0.05)
-
-    timer.stop()
-    if prog.wasCanceled() and not done["ok"]:
-        try:
-            proc.terminate()
-        except Exception:
-            pass
-        write_log("[backfill] cancelled by user")
-        raise SystemExit(0)
-    if outcome["err"]:
-        write_log("[backfill] FAILED: " + outcome["err"])
+    try:
+        # 纯同步、单连接补全；每个批次后 pump 事件避免窗口假死
+        _run_backfill(db_path, hook=lambda t, c: _QApp.processEvents())
+        write_log("[bootstrap] summary backfill done")
+    except Exception as e:  # noqa: BLE001
+        write_log("[backfill] FAILED: " + traceback.format_exc())
         from PySide6.QtWidgets import QMessageBox
         err = QMessageBox()
         err.setIcon(QMessageBox.Icon.Critical)
         err.setWindowTitle("升级失败")
-        err.setText(f"无法补全释义预览：\n{outcome['err']}")
+        err.setText(f"无法补全释义预览：\n{e}")
         err.exec()
-        return
-    write_log("[bootstrap] summary backfill done")
+    finally:
+        prog.close()
 
+
+def _run_backfill(db_path, hook=None):
+    """在调用线程内对 db 就地补全 summary 列，全程单连接，最后 conn 关闭。"""
+    import sqlite3
+    from dictionary.summary import extract_summary
+
+    if not db_path or not os.path.exists(db_path):
+        raise FileNotFoundError(db_path)
+    conn = sqlite3.connect(db_path, timeout=30)
+    try:
+        conn.execute("ALTER TABLE words ADD COLUMN summary TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # 列可能已存在
+    rows = conn.execute("SELECT id, html FROM words")
+    batch = []
+    done = 0
+    while True:
+        chunk = rows.fetchmany(2000)
+        if not chunk:
+            break
+        for rid, html in chunk:
+            s = extract_summary(html or "")
+            batch.append((s, rid))
+        conn.executemany("UPDATE words SET summary=? WHERE id=?", batch)
+        done += len(batch)
+        batch = []
+        if hook:
+            hook(done, None)
+    if batch:
+        conn.executemany("UPDATE words SET summary=? WHERE id=?", batch)
+        if hook:
+            hook(done + len(batch), None)
+    conn.commit()
+    conn.close()
 
 def build_from_mdx(mdx_path: str) -> str:
     """在子进程中把 .mdx 构建成 oxford.db。
@@ -502,11 +488,16 @@ def main():
         from PySide6.QtCore import QLockFile
         lock_path = os.path.join(_app_root(), "wordlookup.lock")
         lock = QLockFile(lock_path)
-        lock.setStaleLockTime(0)
-        if not lock.tryLock(100):
-            write_log("[startup] 已有实例在运行，退出本次启动")
+        # 关键：给过期的锁留一个可回收时间。若设 0，崩溃/强杀残留的野锁永远不会
+        # 被认作过期，导致"之前强制关了之后再也打不开"。设为 10s：
+        #   - 若真有其他实例在运行 → 它会持续刷新锁，这里拿不到锁(仍会被拒绝)
+        #   - 若是已崩溃进程留下的锁 → 超过 10s 自动判为陈旧并被回收
+        lock.setStaleLockTime(10000)
+        if lock.tryLock(100):
+            app._lockfile = lock
+        else:
+            write_log("[startup] 已有 Word Lookup 在运行，本次启动退出")
             raise SystemExit(0)
-        app._lockfile = lock
     except SystemExit:
         raise
     except Exception as e:  # noqa: BLE001

@@ -208,10 +208,10 @@ def convert_dict_html(html: str) -> str:
     # 例句
     extra = _extract_examples(html)
     if extra:
-        parts.append("<div class='exblock'><h2>例句</h2><ul>")
+        parts.append(f"<h2>例句</h2><div class='exlist'><ol class='ex'>")
         for e in extra[:12]:
-            parts.append(f"<li>{_esc(e)}</li>")
-        parts.append("</ul></div>")
+            parts.append(f"<li class='ex'>{_esc(e)}</li>")
+        parts.append("</ol></div>")
 
     parts.append("</body></html>")
     return "\n".join(parts)
@@ -271,27 +271,37 @@ def _fallback(html: str) -> str:
     h = re.sub(r"<img\b[^>]*>", "", h, flags=re.I)
     return _HEADER + h
 
-
 _HEADER = "<!DOCTYPE html>"
 _STYLE = (
     "<style>"
-    "body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;font-size:15px;"
-    "color:#222;line-height:1.65;padding:16px 20px;background:#fff;}"
-    "h1{font-size:29px;font-weight:700;color:#111;margin:2px 0 2px;}"
-    "h2{font-size:14px;color:#666;margin:18px 0 6px;font-weight:600;"
-    "border-bottom:1px solid #eee;padding-bottom:3px;}"
-    "span.pos{font-size:15px;color:#2b6cb0;font-style:italic;margin-left:8px;font-weight:400;}"
-    "div.phonrow{margin:2px 0 10px;} span.phon{color:#7a7a7a;font-size:14px;margin-right:6px;}"
-    "span.sep{color:#c0c0c0;margin:0 8px;}"
-    "div.posline{margin:2px 0 10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}"
-    "span.posband{display:inline-block;background:#2b6cb0;color:#fff;font-style:italic;"
-    "font-weight:600;padding:2px 10px;border-radius:10px;font-size:13px;}"
-    "div.possep{border-top:1px dashed #d0d7e2;margin-top:14px;padding-top:12px;}"
-    "div.senses{} div.sense{margin:1px 0 10px;padding:7px 11px;background:#f6f8fc;"
-    "border-left:3px solid #c7d2fe;border-radius:4px;}"
-    "span.sensenum{color:#7c8db5;font-weight:700;margin-right:8px;font-size:13px;}"
-    "span.def{color:#1a1a1a;} div.chn{color:#0f766e;margin-top:2px;font-weight:500;}"
-    "ul{margin:4px 0 8px;padding-left:22px;} li{margin:3px 0;color:#334155;}"
+    "body{font-family:'Segoe UI','PingFang SC','Helvetica Neue',sans-serif;"
+    "font-size:15.5px;color:#1D1D1F;line-height:1.7;"
+    "background:#F4F5F7;padding:26px 34px 40px;}"
+    "h1{font-size:40px;font-weight:700;letter-spacing:-0.3px;color:#111114;"
+    "margin:2px 0 8px;}"
+    "div.meta{color:#6E6E73;font-size:15px;margin:0 0 6px;}"
+    "span.pos{color:#0A84FF;font-style:italic;font-weight:550;margin-right:10px;font-size:16px;}"
+    "span.phon{color:#8E8E93;font-size:15px;}"
+    "span.sep{color:#C7C7CC;margin:0 8px;}"
+    "div.posline{margin:6px 0 2px;}"
+    "span.posband{color:#0A84FF;font-style:italic;font-weight:550;font-size:16px;}"
+    "div.gap{height:10px;}"
+    "div.possep{border-top:1px solid #E7E9ED;margin-top:16px;padding-top:14px;}"
+    "div.sense{margin:0 0 4px;padding-left:2px;}"
+    "span.sensenum{color:#0A84FF;font-weight:650;margin-right:8px;font-size:15.5px;}"
+    "span.def{color:#1D1D1F;}"
+    "div.chn{color:#14806B;font-weight:610;margin-top:1px;margin-bottom:10px;"
+    "padding-left:22px;font-size:15.5px;}"
+    "h2{font-size:11.5px;color:#8E8E93;font-weight:700;letter-spacing:1.6px;"
+    "text-transform:uppercase;margin:26px 0 8px;}"
+    "div.exlist{color:#3A3A3E;margin:0;}"
+    "ol.ex{margin:0;padding:0 0 0 4px;list-style:none;}"
+    "ol.ex li.ex{margin:5px 0;color:#3A3A3E;list-style:none;}"
+    "ol.ex li.ex:before{content:'\\2022  ';color:#0A84FF;margin-right:4px;}"
+    "table{border-collapse:collapse;} td,th{padding:3px 10px;font-size:15px;}"
+    "ol,ul{margin:4px 0 8px;} li{margin:3px 0;}"
+    "img{max-width:100%;background:transparent;border:0;}"
+    "a{color:#0A84FF;}"
     "</style>"
 )
 

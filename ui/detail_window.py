@@ -81,6 +81,10 @@ class DetailWindow(QWidget):
         if not html:
             self._browser.setHtml(f"<div style='font:15px sans-serif;padding:20px'>未找到：{word}</div>")
             return
+        # 已由 dict_render 处理过的干净排版本(含 <style>) 直接渲染
+        if "<style>" in html or "<body" in html and "<!DOCTYPE" in html:
+            self._browser.setHtml(html)
+            return
         cleaned = self._clean_html(html)
         # QTextBrowser 不加载外链 css，注入一份可读基础样式，避免挤成一团
         base_css = (

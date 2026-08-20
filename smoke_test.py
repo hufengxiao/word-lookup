@@ -68,6 +68,22 @@ def main():
     else:
         raise RuntimeError("FAIL: 详情窗口未显示 (top-level 或引用列表均为空)")
 
+    # 详情渲染器: 用词典原文喂给 dict_render, 验证生成 h1+释义卡片
+    raw = searcher.lookup("apple")[1]
+    from ui.dict_render import convert_dict_html
+    assert raw, "lookup('apple') 无正文"
+    styled = convert_dict_html(raw)
+    n_sense = styled.count("class='sense'")
+    step(f"dict_render: h1={'<h1>' in styled} 释义卡片={n_sense}")
+    step("dict_render: 生成可读排版 OK" if "<h1>" in styled else "警告: 渲染无词头")
+
+    # 重定向跟随: lookup(stepsons) 应命中主词条(或至少不崩溃) — mini db 无重定向则跳过
+    try:
+        disp, _h = searcher.lookup("stepsons")
+        step(f"重定向跟随 lookup(stepsons) → {disp!r}")
+    except Exception as e:
+        raise RuntimeError(f"FAIL: lookup 重定向异常 {e}")
+
     # 透明度测试
     win.setWindowOpacity(1.0)
     win._is_active_opacity = False

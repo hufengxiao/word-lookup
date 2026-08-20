@@ -98,6 +98,7 @@ class SearchWindow(QFrame):
         self._dragging = False
         self._drag_offset = None
         self._expanded = False
+        self._last_query = ""
 
     # ------------------------------------------------------------------
     # 默认详情窗口工厂
@@ -125,6 +126,11 @@ class SearchWindow(QFrame):
     # 显示/隐藏
     # ------------------------------------------------------------------
     def toggle(self):
+        # 频繁开关: 用一个最小间隔合并连续触发, 避免热键连按/重复排队导致的抖动
+        now = _monotonic_ms()
+        if now - getattr(self, "_last_toggle_ts", 0) < 90:
+            return
+        self._last_toggle_ts = now
         if self.isVisible():
             self.hide_window()
         else:
@@ -133,16 +139,22 @@ class SearchWindow(QFrame):
     def show_window(self):
         self._center()
         self.setWindowOpacity(OPACITY_ACTIVE)
+        # 一次性完成显示+置顶+聚焦, 减少 Windows 上多次窗口管理调用
         self.show()
         self.raise_()
         self.activateWindow()
         self._title.setFocus(Qt.OtherFocusReason)
-        # 有词条时展示结果，否则收起成长条
         txt = self._title.text().strip()
         if txt:
-            self._do_search()
+            # 结果已就绪且文本没变, 不再重复搜索(避免闪烁与开销)
+            if getattr(self, "_last_query", None) == txt and self._list.count():
+                self._list.show()
+                self.setFixedSize(W, H_EXPANDED if self._expanded else H_COLLAPSED)
+            else:
+                self._do_search()
         else:
             self._collapse()
+            self._title.setFocus(Qt.OtherFocusReason)
 
     def hide_window(self):
         self.hide()
@@ -174,20 +186,28 @@ class SearchWindow(QFrame):
     def _on_text_changed(self, _text):
         self._timer.start()
 
-    def _do_search(self):
+    def _do_search(self, _seq=0):
         q = self._title.text().strip()
-        self._list.clear()
         if not q:
             self._collapse()
             return
         rows = self._searcher.search(q, MAX_SUGGEST)
+        self._render_results(q, rows)
+
+    def _render_results(self, q: str, rows):
+        """把查询结果渲染进列表。只用当前文本对应的结果。"""
+        cur = self._title.text().strip()
+        if cur != q:  # 输入已变化，丢弃过期结果
+            return
+        self._last_query = q
+        self._list.clear()
         if not rows:
-            self._list.clear()
             self._expand()
             it = QListWidgetItem("无匹配结果")
             it.setFlags(Qt.NoItemFlags)
+            it.setEnabled(False)
             self._list.addItem(it)
-            self._list.show()
+            self._list.setCurrentRow(-1)
             return
         self._expand()
         for key, _kl in rows:
@@ -211,13 +231,23 @@ class SearchWindow(QFrame):
     def _open_item(self, item):
         self._open_word(item.data(Qt.UserRole))
 
-    def _open_word(self, key: str):
+    def _open_word(self, key: str, detail: "DetailWindow | None" = None):
         if not key:
             return
-        html = self._searcher.lookup(key)
-        detail = self._detail_factory()
-        detail.set_html(key, html if html else
-                        f"<p style='color:#888'>未找到该词条：{key}</p>")
+        display_key, html = self._searcher.lookup(key)
+        if detail is None:
+            detail = self._detail_factory()
+        if html:
+            try:
+                from ui.dict_render import convert_dict_html
+                nice = convert_dict_html(html)
+                detail.set_html(display_key or key, nice)
+            except Exception:
+                detail.set_html(display_key or key,
+                                f"<p style='color:#888'>无法解析该词条：{key}</p>")
+        else:
+            detail.set_html(display_key or key,
+                            f"<p style='color:#888'>未找到该词条：{key}</p>")
         self._place_detail(detail)
         detail.show()
         detail.raise_()
@@ -341,6 +371,12 @@ class _DragHandle(QFrame):
 
     def mouseReleaseEvent(self, e):
         self._owner._dragging = False
+
+
+def _monotonic_ms() -> int:
+    """单调时钟毫秒(用于合并连续事件, 不受系统时间调整影响)。"""
+    import time
+    return int(time.monotonic() * 1000)
 
 
 def QApplication_available():

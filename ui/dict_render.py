@@ -279,13 +279,13 @@ _STYLE = (
     "<style>"
     # ===== 深色 Apple 词典排版（iOS 夜间观感）=====
     "body{font-family:'Segoe UI','PingFang SC',sans-serif;"
-    "font-size:15px;color:#F2F2F4;line-height:1.6;"
-    "background:#1E1E24;padding:18px 30px 46px;}"
-    # 词头：居中大词（Apple 词典词头居中的编辑气质），加足够的顶部/底部留白
-    "div.word{font-size:44px;font-weight:650;letter-spacing:-0.5px;color:#FFFFFF;"
-    "text-align:center;margin:10px 0 6px;}"
-    # 词元信息行（词性与音标）同样居中，紧贴词头下方
-    "div.posline{margin:0 0 12px;text-align:center;}"
+        "font-size:15px;color:#F2F2F4;line-height:1.6;"
+        "background:#1E1E24;padding:2px 0px 40px;}"
+        # 词头：靠左、与正文同一左边缘(复用 via setDocumentMargin 的左右边距, 不再贴边)
+        "div.word{font-size:40px;font-weight:650;letter-spacing:-0.4px;color:#FFFFFF;"
+        "text-align:left;margin:0 0 8px;}"
+        # 词元信息行（词性与音标）靠左对齐词头
+        "div.posline{margin:0 0 12px;text-align:left;}"
     "span.posband{color:#0A84FF;font-style:italic;font-weight:600;font-size:17px;margin-right:14px;}"
     "span.phon{color:#8E8E93;font-size:16px;}"
     "span.sep{color:#3F3F46;margin:0 8px;}"
@@ -298,12 +298,12 @@ _STYLE = (
     "span.chn{color:#7FD1FF;font-weight:550;font-size:16px;display:inline;}"
     # 例句分段标题（小号、大写字距）
     "div.seclabel{font-size:11px;color:#6E6E76;font-weight:700;letter-spacing:1.6px;"
-    "text-transform:uppercase;margin:26px 0 10px;padding-left:2px;}"
-    "div.exlist{margin:0;padding-left:2px;}"
-    "ol.ex{margin:0;padding:0 0 0 4px;list-style:none;}"
-    "ol.ex li.ex{margin:7px 0;padding-left:16px;border-left:2px solid #2E2E36;"
+    "text-transform:uppercase;margin:24px 0 8px;}"
+    "div.exlist{margin:0;}"
+    "ol.ex{margin:0;padding:0;list-style:none;}"
+    "ol.ex li.ex{margin:6px 0;padding-left:10px;border-left:2px solid #2E2E36;"
     "color:#D3D3DA;list-style:none;}"
-    "ol.ex li.ex:before{content:'\\2022';color:#0A84FF;margin-right:7px;font-size:12px;}"
+    "ol.ex li.ex:before{content:'\\2022';color:#0A84FF;margin-right:5px;font-size:11px;}"
     "table{border-collapse:collapse;} td,th{padding:3px 10px;font-size:15px;}"
     "img{max-width:100%;background:transparent;border:0;}"
     "a{color:#0A84FF;text-decoration:none;}"

@@ -308,6 +308,9 @@ class SearchWindow(QFrame):
             nice = f"<p style='color:#8E8E93;padding:16px'>无法解析该词条：{key}</p>"
         self._detail_view.setHtml(nice)
         self._detail_view.document().setDefaultStyleSheet("")  # 已由 dict_render 内联样式
+        # 左右边距：让词头/释义/句例统一缩进并与搜索结果左边缘对齐（QText 的
+        # body{padding} 对左右偏移基本无效，改用 documentMargin 可靠地控制整块左边距）
+        self._detail_view.document().setDocumentMargin(24)
         self._current_detail_key = key
         self._mode = "detail"
         # 输入框保持用户查询词不变（返回列表时列表/联想原样恢复）

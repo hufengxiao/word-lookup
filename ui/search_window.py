@@ -10,12 +10,13 @@
 背景用 QPainter 手绘（不依赖样式表 rgba 背景映射），确保卡片底色在
 Windows + 无边框置顶窗口下稳定可见。
 """
-from PySide6.QtCore import Qt, QTimer, QEvent, QRect, QSize, QPoint
+from PySide6.QtCore import Qt, QTimer, QEvent, QRect, QSize, QPoint, QPointF
 from PySide6.QtGui import (
     QFont, QPainter, QColor, QKeyEvent, QLinearGradient, QBrush, QCursor,
 )
 from PySide6.QtWidgets import (
     QFrame, QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout, QHBoxLayout,
+    QLabel,
     QStyledItemDelegate, QTextBrowser,
 )
 from PySide6.QtWidgets import QStyle
@@ -54,6 +55,40 @@ OPACITY_FOCUS_LOST = 0.10
 FADE_MS = 160
 FADE_STEP = 16
 
+# 统一字体：英文/数字=Segoe UI，中文=微软雅黑（全 App 一致，不再散乱定义）
+FONT_FAMILY         = "Segoe UI"
+FONT_FAMILY_CJK     = "Microsoft YaHei"
+# 统一色板（苹果设计语言，克制的层级：只用明度分层，蓝色仅作唯一强调）
+CLR_TEXT            = "#F2F2F7"   # 主文本（系统上）
+CLR_TEXT_SECONDARY  = "#9AA0A6"   # 次级文本（系统灰）
+CLR_TEXT_TERTIARY   = "#6E6E73"   # 弱化/标签
+CLR_ACCENT          = "#0A84FF"   # 唯一点缀色（苹果蓝）：词性/选中/强调
+CLR_SEL_BG          = (42, 97, 168, 255)   # 选中行背景：雅致的苹果蓝偏深
+CLR_CARD            = "#1E1E24"   # 卡片/详情底色
+
+
+class _MagnifierLabel(QLabel):
+    """Apple 风格放大镜：细圆环 + 45° 手柄，QPainter 矢量手绘，替换掉 emoji。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(20, 20)
+
+    def paintEvent(self, _e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        pen = QColor(255, 255, 255, 170)
+        # 圆环
+        r = 6.5
+        c = QPoint(10, 8)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawEllipse(QPointF(c), r, r)
+        # 45° 手柄：从圆环右下延伸到左下
+        p.drawLine(QPointF(c.x()+4.4, c.y()+4.4),
+                   QPointF(c.x()+9.2, c.y()+9.2))
+        p.end()
+
 
 class _ResultDelegate(QStyledItemDelegate):
     """Spotlight 式结果行：词头加粗醒目 + 右侧紧跟灰色释义预览。
@@ -63,14 +98,14 @@ class _ResultDelegate(QStyledItemDelegate):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._key_font = QFont("Segoe UI", 15, QFont.Bold)
-        self._sum_font = QFont("Segoe UI", 13)
-        # 预建颜色(避免每帧重建字符串颜色的开销)
-        self._bg_on = QColor(59, 130, 246, 255)
-        self._key_on = QColor("#ffffff")
-        self._key_off = QColor("#ebe9ff")
-        self._sum_on = QColor(255, 255, 255, 200)
-        self._sum_off = QColor("#ffd98a")
+        self._key_font = QFont(FONT_FAMILY, 15, QFont.Bold)
+        self._sum_font = QFont(FONT_FAMILY, 13)
+        # 统一色板：主文本白，选中时纯白，未选中次级灰；释义预览一律敲会灰(不再用橙色)
+        self._bg_on = QColor(*CLR_SEL_BG)
+        self._key_on = QColor(CLR_TEXT)
+        self._key_off = QColor("#FFFFFF")
+        self._sum_on = QColor(255, 255, 255, 220)
+        self._sum_off = QColor(CLR_TEXT_SECONDARY)
 
     def sizeHint(self, option, index):
         w = max(option.rect.width(), 320)
@@ -101,7 +136,7 @@ class _ResultDelegate(QStyledItemDelegate):
         icon_cy = r.center().y()
         painter.setBrush(QColor(255, 255, 255, 46) if selected else QColor(255, 255, 255, 20))
         painter.drawRoundedRect(QRect(icon_x, icon_cy - icon_size // 2, icon_size, icon_size), 6, 6)
-        ic_font = QFont("Segoe UI", 9, QFont.DemiBold)
+        ic_font = QFont(FONT_FAMILY, 9, QFont.DemiBold)
         painter.setFont(ic_font)
         painter.setPen(QColor(255, 255, 255, 210))
         painter.drawText(QRect(icon_x, icon_cy - icon_size // 2, icon_size, icon_size),
@@ -180,17 +215,23 @@ class SearchWindow(QFrame):
         top.setContentsMargins(16, 12, 12, 12)
         top.setSpacing(0)
         self._title = QLineEdit(self)
-        self._title.setPlaceholderText("🔍  输入英文单词查询…")
-        self._title.setFont(QFont("Segoe UI", 19))
+        self._title.setPlaceholderText("输入英文单词查询…")
+        self._title.setFont(QFont(FONT_FAMILY, 19))
         self._title.setStyleSheet(
-            "QLineEdit { background: transparent; color: #ffffff;"
-            " border: none; selection-background-color:#3b82f6; }"
+            "QLineEdit { background: transparent; color:#FFFFFF; border:none;"
+            " selection-background-color:%s; }"
+            "QLineEdit::placeholder { color:#6E6E73; font-family:'%s'; }"
+            % (CLR_ACCENT, FONT_FAMILY)
         )
         self._title.textChanged.connect(self._on_text_changed)
         self._title.returnPressed.connect(self._on_return)
         self._title.setFocusPolicy(Qt.StrongFocus)
-        # 拦截 ↑/↓/Esc/Enter，实现 Spotlight 式键盘导航（焦点一直在输入框）
+        # 拦截 ↑/↓/Enter，实现 Spotlight 式键盘导航（焦点一直在输入框）
         self._title.installEventFilter(self)
+        # #11 放大镜：矢量手绘，替换原 emoji
+        self._mag = _MagnifierLabel(self)
+        top.addWidget(self._mag, 0, Qt.AlignVCenter)
+        top.addSpacing(8)
         top.addWidget(self._title, 1)
 
         # 底部拖动手柄（三条杠），也可直接拖；同时是一个可见的拖动把手
@@ -217,13 +258,14 @@ class SearchWindow(QFrame):
         # ---- 内嵌详情视图：按 Enter 后从"结果列表"切换成"详情"（同一窗口内）----
         self._detail_view = QTextBrowser(self)
         self._detail_view.setStyleSheet(
-            "QTextBrowser { background: #1E1E24; border: none;"
-            " selection-background-color: #0A84FF; selection-color: #ffffff; }"
-            "QScrollBar:vertical { width: 8px; background: transparent;}"
-            "QScrollBar::handle:vertical { background: #45454E; min-height: 30px; border-radius:4px;}"
-            "QScrollBar::handle:vertical:hover { background: #5A5A64; }"
-            "QScrollBar::add-line, QScrollBar::sub-line { height: 0; }"
-        )
+                    ("QTextBrowser { background: %s; border:none; "
+                     "selection-background-color:#0A84FF; selection-color:#ffffff; }"
+                     "QScrollBar:vertical{width:8px;background:transparent;}"
+                     "QScrollBar::handle:vertical{background:#45454E;min-height:30px;border-radius:4px;}"
+                     "QScrollBar::handle:vertical:hover{background:#5A5A6A;}"
+                     "QScrollBar::add-line,QScrollBar::sub-line{height:0;}")
+                    % CLR_CARD
+                )
         self._detail_view.setOpenExternalLinks(True)
         self._detail_view.hide()
         lay.addWidget(self._detail_view, 1)

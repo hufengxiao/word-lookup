@@ -330,41 +330,44 @@ def _fallback(html: str) -> str:
     return _HEADER + h
 
 _HEADER = "<!DOCTYPE html>"
+
+# 与搜索窗口一致的统一色板（苹果设计语言，克制层级，蓝色仅作唯一强调）
+_CLR_TEXT         = "#F2F2F7"   # 主文本
+_CLR_TEXT_SOFT    = "#E8E8EC"   # 英文例句正文
+_CLR_SECONDARY    = "#9AA0A6"   # 次级/音标/中文例句
+_CLR_TERTIARY     = "#6E6E73"   # 弱化标签（小标题）
+_CLR_ACCENT       = "#0A84FF"   # 唯一强调（词性/序号/链接）
+_CLR_CARD         = "#1E1E24"   # 卡片底
+_CLR_HAIR         = "#2A2A33"   # 发线/例句竖线
+_CLR_CJK_DEF      = "#D8D8E0"   # 中文释义（比英文稍暗，中性、不染色相）
+
 _STYLE = (
-    "<style>"
-    # ===== 深色 Apple 词典排版（iOS 夜间观感）=====
-            # 字体栈：英文走 Segoe UI(与搜索界面一致)，中文回退到微软雅黑，避免拼音/默认宋体字号不一
-            "body{font-family:'Segoe UI','Microsoft YaHei','PingFang SC',sans-serif;"
-            "font-size:15px;color:#F2F2F4;line-height:1.62;"
-            "background:#1E1E24;padding:2px 0px 40px;}"
-            # 词头：三梯队最高权重，硕大但不刺眼（收敛到 32px，避免 40px 喧宾夺主）
-            "div.word{font-size:32px;font-weight:700;letter-spacing:-0.5px;color:#FFFFFF;"
-            "text-align:left;margin:0 0 6px;}"
-            # 词元信息行（词性与音标）靠左对齐词头，小一号
-            "div.posline{margin:0 0 12px;text-align:left;}"
-            "span.posband{color:#0A84FF;font-style:italic;font-weight:600;font-size:16px;margin-right:14px;}"
-            "span.phon{color:#8E8E93;font-size:15px;}"
-            "span.sep{color:#3F3F46;margin:0 8px;}"
-        # 同形词小节：发线分隔
-            "div.possep{border-top:1px solid #2E2E36;margin:18px 0 6px;padding-top:14px;}"
-            # 释义：最强正文权重（梯级②），偏白；序号苹果蓝
-            "div.sense{margin:0 0 15px;padding-left:2px;}"
-            "span.sensenum{color:#0A84FF;font-weight:700;margin-right:8px;font-size:16px;}"
-            "span.def{color:#FFFFFF;display:inline;font-size:16px;}"
-            "span.chn{color:#7FD1FF;font-weight:550;font-size:15.5px;display:inline;}"
-            # 例句分段标题（小号、大写字距）
-            "div.seclabel{font-size:11px;color:#6E6E76;font-weight:700;letter-spacing:1.6px;"
-            "text-transform:uppercase;margin:22px 0 10px;}"
-            # 例句：透明背景（无引用块），保留缩进与标题，正文③级弱化
-            "div.exlist{margin:0;padding-left:2px;}"
-            "div.ex{margin:7px 0;padding-left:10px;border-left:2px solid #2A2A33;color:#D0D0D8;}"
-            "span.exx{color:#E8E8EE;font-size:14px;line-height:1.5;}"
-            "span.excn{color:#9AA0A6;font-size:13px;line-height:1.45;}"
-            "table{border-collapse:collapse;} td,th{padding:3px 10px;font-size:15px;}"
-            "img{max-width:100%;background:transparent;border:0;}"
-            "a{color:#0A84FF;text-decoration:none;}"
-        "</style>"
-    )
+    f"""<style>
+body{{font-family:'Segoe UI','Microsoft YaHei',sans-serif;font-size:15px;
+color:{_CLR_TEXT};line-height:1.62;background:{_CLR_CARD};padding:2px 0px 40px;}}
+div.word{{font-size:32px;font-weight:700;letter-spacing:-0.5px;color:#FFFFFF;
+text-align:left;margin:0 0 6px;}}
+div.posline{{margin:0 0 12px;text-align:left;}}
+span.posband{{color:{_CLR_ACCENT};font-style:italic;font-weight:600;font-size:16px;margin-right:14px;}}
+span.phon{{color:{_CLR_SECONDARY};font-size:15px;}}
+span.sep{{color:{_CLR_HAIR};margin:0 8px;}}
+div.possep{{border-top:1px solid {_CLR_HAIR};margin:18px 0 6px;padding-top:14px;}}
+div.sense{{margin:0 0 15px;padding-left:2px;}}
+span.sensenum{{color:{_CLR_ACCENT};font-weight:700;margin-right:8px;font-size:16px;}}
+span.def{{color:#FFFFFF;display:inline;font-size:16px;}}
+span.chn{{color:{_CLR_CJK_DEF};font-weight:550;font-size:15.5px;display:inline;}}
+div.seclabel{{font-size:11px;color:{_CLR_TERTIARY};font-weight:700;letter-spacing:1.6px;
+text-transform:uppercase;margin:22px 0 10px;}}
+div.exlist{{margin:0;padding-left:2px;}}
+div.ex{{margin:7px 0;padding-left:10px;border-left:2px solid {_CLR_HAIR};color:{_CLR_TEXT_SOFT};}}
+span.exx{{color:{_CLR_TEXT_SOFT};font-size:14px;line-height:1.5;}}
+span.excn{{color:{_CLR_SECONDARY};font-size:13px;line-height:1.45;}}
+table{{border-collapse:collapse;}} td,th{{padding:3px 10px;font-size:15px;}}
+img{{max-width:100%;background:transparent;border:0;}}
+a{{color:{_CLR_ACCENT};text-decoration:none;}}
+</style>"""
+)
+
 
 
 # 兼容旧调用

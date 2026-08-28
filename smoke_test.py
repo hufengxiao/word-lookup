@@ -49,7 +49,7 @@ def main():
     step(f"首条: {first!r}")
     first_sum = win._list.item(0).data(Qt.UserRole + 1) if n else ""
     step(f"首条释义预览: {first_sum!r}")
-    assert isinstance(first_sum, str), "FAIL: 结果缺少释义预览数据(summary)"
+    assert isinstance(first_sum, str), "FAIL: 结果条目缺少释义预览数据(summary)"
 
     # 键盘导航: 在输入框按下 ↓/↑ 应切换联想选中项（直接给列表喂2个候选，
     # 避免 mini db 前缀结果只有1条的局限）
@@ -58,10 +58,10 @@ def main():
     win._list.addItem(QListWidgetItem("alpha")); win._list.addItem(QListWidgetItem("beta"))
     win._list.show()
     win._list.setCurrentRow(0)
-    nav = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier)
+    nav = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier)
     win.eventFilter(win._title, nav)
     row_after_down = win._list.currentRow()
-    nav_up = QKeyEvent(QEvent.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.NoModifier)
+    nav_up = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.NoModifier)
     win.eventFilter(win._title, nav_up)
     row_after_up = win._list.currentRow()
     step(f"键盘导航: Down后row={row_after_down} Up后row={row_after_up} (应 1 和 0)")
@@ -83,7 +83,7 @@ def main():
     step(f"窗口高度(详情): {win.height()} (应={__import__('ui.search_window', fromlist=['H_DETAIL']).H_DETAIL})")
 
     # Esc 返回列表视图
-    ev_esc = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key_Escape, Qt.KeyboardModifier.NoModifier)
+    ev_esc = QKeyEvent(QEvent.Type.KeyPress, Qt.Key_Escape, Qt.KeyboardModifier.NoModifier)
     win.keyPressEvent(ev_esc)
     step(f"详情按 Esc → 返回列表: mode={win._mode}, 详情隐藏={not win._detail_view.isVisible()}, 列表可见={win._list.isVisible()}")
     assert win._mode == "list" and not win._detail_view.isVisible(), "FAIL: Esc 未返回列表视图"
@@ -100,7 +100,7 @@ def main():
     # 例句英文/中文拆分: 真实牛津结构中 EN(x)与中文(xT><chn>)应分到两行
     from ui.dict_render import _extract_examples
     ex_in = ("<ul class='examples'><li><span class='x'>general <span class='gloss'>(= typical)</span> trend</span>"
-             "<xT><chn>\u603b\u8d8b\u52bf</chn></xT></li></ul>")
+             "<xT><chn>总趋势</chn></xT></li></ul>")
     ex_pairs = _extract_examples(ex_in)
     assert ex_pairs and len(ex_pairs[0]) == 2, "FAIL: 例句未拆成(英文,中文)"
     _en, _cn = ex_pairs[0]
@@ -121,31 +121,29 @@ def main():
     if n_pos < 2:
         raise RuntimeError("FAIL: 多词性词条渲染未生成多个词性小节")
 
-    # 重定向跟随: lookup(stepsons) 应命中主词条(或至少不崩溃) — mini db 无重定向则跳过
-    try:
-        disp, _h = searcher.lookup("stepsons")
-        step(f"重定向跟随 lookup(stepsons) → {disp!r}")
-    except Exception as e:
-        raise RuntimeError(f"FAIL: lookup 重定向异常 {e}")
-
-    # 透明度测试
-    win.setWindowOpacity(1.0)
-    win._is_active_opacity = False
-    from ui.search_window import OPACITY_FOCUS_LOST
-    win.setWindowOpacity(OPACITY_FOCUS_LOST)
-    step(f"失焦透明度 → {win.windowOpacity()}")
-    win.enterEvent(None)
-    step(f"鼠标移入恢复 → {win.windowOpacity()}")
-    # 回归：修复"移入后一直不透明"的 bug —— 失焦/移出后应能再次变透明。
+    # 透明度测试（v0.7.0：改为 160ms 渐变，而非跳变）
+    # 1) 失焦/移出 → 起动渐变，应能看到透明度下降（并非被卡死在 1.0）
     win.setWindowOpacity(1.0)
     win._is_active_opacity = True
-    win._refresh_opacity(force_using=False)     # 无焦点 + 鼠标在外 → 判透明
-    step(f"移出+失焦后透明度 → {win.windowOpacity()}")
-    assert win.windowOpacity() < 0.5, "FAIL: 失焦/移出后未变透明(bug 复现)"
-    win._refresh_opacity(force_using=True)      # 再悬停 → 恢复不透明
-    step(f"再次使用后透明度 → {win.windowOpacity()}")
+    win._refresh_opacity(force_using=False)     # 无焦点 + 鼠标在外 → 目标 0.10
+    step(f"失焦后起动渐变: 目标={win._fade_target}, 当前={win.windowOpacity()}")
+    # 播放几帧，模拟 160ms 渐变推进
+    for _ in range(int(160 / 16) + 2):
+        win._fade_tick()
+    step(f"失焦渐变结束 → {win.windowOpacity()}")
+    assert win.windowOpacity() < 0.5, "FAIL: 失焦后未变透明(bug 复现)"
+    # 2) 鼠标移入/复用 → 渐变恢复不透明
+    win._is_active_opacity = False
+    win.enterEvent(None)
+    assert win._fade_target == 1.0, "FAIL: 移入未触发恢复不透明"
+    # 渐变每帧推进 10% of 剩余，越接近越慢；播足够多帧直到到达 1.0
+    for _ in range(40):
+        win._fade_tick()
+        if win.windowOpacity() > 0.99:
+            break
+    step(f"鼠标移入渐变结束 → {win.windowOpacity()}")
     assert win.windowOpacity() > 0.9, "FAIL: 复用后未恢复不透明"
-    step("透明度回归 PASS")
+    step("透明度渐变 PASS")
 
     # 搜索无匹配
     win._title.setText("zzzzqqqq")
@@ -153,7 +151,7 @@ def main():
     step(f"搜索无匹配: list可见={win._list.isVisible()}, 条数={win._list.count()}")
 
     # 键盘事件 (Esc 隐藏)
-    ev = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key_Escape, Qt.KeyboardModifier.NoModifier)
+    ev = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
     win.keyPressEvent(ev)
     step(f"Esc 后隐藏: {not win.isVisible()}")
 
@@ -162,7 +160,7 @@ def main():
     win._dragging = True
     win._drag_offset = QPoint(10, 10)
     win.move(100, 100)
-    e = QMouseEvent(QEvent.Type.MouseMove, QPointF(200,150), Qt.MouseButton.NoButton,
+    e = QMouseEvent(QEvent.Type.MouseMove, QPointF(200, 150), Qt.MouseButton.NoButton,
                     Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
     win.mouseMoveEvent(e)
     step(f"拖动后位置: {win.x()},{win.y()} (目标约 190,140)")

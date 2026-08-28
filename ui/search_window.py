@@ -10,7 +10,7 @@
 背景用 QPainter 手绘（不依赖样式表 rgba 背景映射），确保卡片底色在
 Windows + 无边框置顶窗口下稳定可见。
 """
-from PySide6.QtCore import Qt, QTimer, QEvent, QRect, QSize
+from PySide6.QtCore import Qt, QTimer, QEvent, QRect, QSize, QPoint
 from PySide6.QtGui import (
     QFont, QPainter, QColor, QKeyEvent, QLinearGradient, QBrush, QCursor,
 )
@@ -29,9 +29,30 @@ OPACITY_FOCUS_LOST = 0.10  # 近乎透明（失焦）
 MAX_SUGGEST = 20
 SEARCH_DELAY_MS = 60      # 输入去抖
 CARD_RADIUS = 14
-W, H_COLLAPSED = 520, 68   # 长条搜索框尺寸（收起/唤起时）
-H_EXPANDED = 420           # 输入后有结果时展开高度
-H_DETAIL = 660             # 按 Enter 进入"详情视图"时的窗口高度
+# 尺寸改为按屏比例自适应（不再硬编码固定像素，任何桌面都“刚刚好”）
+W = 520                      # 基准宽，实际按屏幕比例取
+H_COLLAPSED = 68
+H_EXPANDED = 420
+H_DETAIL = 660
+
+def _scale_width():
+    """窗口宽度随屏幕可用宽度缩放，锁定在 [420, 700] 区间（Spotlight 居中偏上）。"""
+    try:
+        from PySide6.QtWidgets import QApplication
+        sc = QApplication.primaryScreen()
+        if sc is not None:
+            w = sc.availableGeometry().width()
+            return max(420, min(700, int(w * 0.42)))
+    except Exception:
+        pass
+    return W
+
+# 透明度（渐变阈值）
+OPACITY_ACTIVE = 1.0
+OPACITY_FOCUS_LOST = 0.10
+# 渐变时长(ms) / 帧间隔(ms)：失焦淡出 + 悬停/唤起淡入 都走这条曲线
+FADE_MS = 160
+FADE_STEP = 16
 
 
 class _ResultDelegate(QStyledItemDelegate):
@@ -105,8 +126,9 @@ class SearchWindow(QFrame):
         )
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, False)
-        self.setFixedSize(W, H_COLLAPSED)
-        self.setWindowOpacity(OPACITY_ACTIVE)
+        self._win_w = _scale_width()          # 按屏幕比例的自适应宽
+        self.setFixedSize(self._win_w, H_COLLAPSED)
+        self.setWindowOpacity(0.0)            # 开头透明，由唤起动画淡入
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(2, 2, 2, 2)
@@ -176,6 +198,12 @@ class SearchWindow(QFrame):
         self._drag_offset = None
         self._expanded = False
         self._last_query = ""
+        # 透明度渐变状态
+        self._fade_timer = QTimer(self)
+        self._fade_timer.setInterval(FADE_STEP)
+        self._fade_timer.timeout.connect(self._fade_tick)
+        self._fade_target = OPACITY_ACTIVE
+        self._reveal_timer = None   # 唤起浮现动画（淡入+上滑+微缩放）
         # 视图状态：'list'（联想列表）/ 'detail'（详情视图）
         self._mode = "list"
         self._current_detail_key = None
@@ -197,6 +225,24 @@ class SearchWindow(QFrame):
     def _stop_opacity_watch(self):
         self._op_timer.stop()
 
+    def _transition_opacity(self, target: float):
+        """开始向 target 做 160ms 渐变插值（替代原跳变，Spotlight 式跟手淡入淡出）。"""
+        self._fade_target = target
+        if not self._fade_timer.isActive():
+            self._fade_timer.start()
+
+    def _fade_tick(self):
+        """每一帧把窗口透明度向目标推进 1 步，到达目标后停止定时器。"""
+        cur = self.windowOpacity()
+        target = self._fade_target
+        if abs(cur - target) < 0.02:
+            self.setWindowOpacity(target)
+            self._fade_timer.stop()
+            return
+        # 线性插值，16ms → ~160ms 完成；淡入稍快、淡出同速即可
+        step = (target - cur) * (float(FADE_STEP) / FADE_MS)
+        self.setWindowOpacity(max(0.0, min(1.0, cur + step)))
+
     def _refresh_opacity(self, force_using: bool | None = None):
         if not self.isVisible() and force_using is None:
             return
@@ -211,7 +257,7 @@ class SearchWindow(QFrame):
         opaque = using  # 窗口“正被使用”时保持不透明
         if opaque != self._is_active_opacity:
             self._is_active_opacity = opaque
-            self.setWindowOpacity(OPACITY_ACTIVE if opaque else OPACITY_FOCUS_LOST)
+            self._transition_opacity(OPACITY_ACTIVE if opaque else OPACITY_FOCUS_LOST)
 
     # ------------------------------------------------------------------
     # 绘制：手绘圆角半透明卡片（保障背景可见）
@@ -227,11 +273,21 @@ class SearchWindow(QFrame):
             g.setColorAt(0, QColor(52, 53, 65, 246))
             g.setColorAt(1, QColor(27, 28, 36, 246))
             self._grad_brush = QBrush(g)
-            self._border_pen = QColor(255, 255, 255, 40)
+            # #2 假毛玻璃：柔和描边 + 顶部高光，深色下比纯 40-alpha 直边更有“浮层感”
+            self._border_pen = QColor(255, 255, 255, 46)
+            self._edge_pen = QColor(0, 0, 0, 70)       # 外缘底光（压暗描边）
+            self._top_pen = QColor(255, 255, 255, 26)  # 顶部 1px 高光
             grad = self._grad_brush
         painter.setBrush(grad)
         painter.setPen(self._border_pen)
         painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), CARD_RADIUS, CARD_RADIUS)
+        # 外部阴影/暗边：让卡片从深色桌面“浮”起来
+        painter.setPen(self._edge_pen)
+        painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), CARD_RADIUS, CARD_RADIUS)
+        painter.setPen(self._top_pen)
+        # 顶部内描边高光（模拟毛玻璃的顶部受光，视觉“抬”起 1px）
+        tr = self.rect().adjusted(2, 1, -2, 0)
+        painter.drawLine(tr.topLeft() + QPoint(CARD_RADIUS, 1), tr.topRight() - QPoint(CARD_RADIUS, 0))
         painter.end()
         super().paintEvent(event)
 
@@ -252,13 +308,21 @@ class SearchWindow(QFrame):
     def show_window(self):
         self._center()
         self._is_active_opacity = True
-        self.setWindowOpacity(OPACITY_ACTIVE)
+        # 唤起浮现动画：由 0 -> 1 淡入 + 从下方 14px 微升，营造“Spotlight 浮现”感
+        self.setWindowOpacity(0.0)
+        self._reveal_origin = self.pos()
+        self._reveal_time = _monotonic_ms()
         # 一次性完成显示+置顶+聚焦, 减少 Windows 上多次窗口管理调用
         self.show()
         self.raise_()
         self.activateWindow()
         # 启动透明度巡检器，让窗口随焦点/鼠标实时透明(失焦即透明)
         self._start_opacity_watch()
+        # 启动淡入（最终目标 1.0）+ 上滑，168ms 完成
+        self._reveal_timer = QTimer(self)
+        self._reveal_timer.setInterval(FADE_STEP)
+        self._reveal_timer.timeout.connect(self._reveal_tick)
+        self._reveal_timer.start()
         txt = self._title.text().strip()
         if self._mode == "detail":
             # 之前停在详情视图：恢复详情（不干扰已渲染内容）
@@ -269,15 +333,32 @@ class SearchWindow(QFrame):
             # 结果已就绪且文本没变, 不再重复搜索(避免闪烁与开销)
             if getattr(self, "_last_query", None) == txt and self._list.count():
                 self._list.show()
-                self.setFixedSize(W, H_EXPANDED if self._expanded else H_COLLAPSED)
+                self.setFixedSize(self._win_w, H_EXPANDED if self._expanded else H_COLLAPSED)
             else:
                 self._do_search()
         else:
             self._collapse()
             self._title.setFocus(Qt.OtherFocusReason)
 
+    def _reveal_tick(self):
+        """唤起浮现：透明度 0→1 + y 向上偏移 14px→0（线性 168ms）。"""
+        el = _monotonic_ms() - getattr(self, "_reveal_time", 0)
+        t = min(1.0, el / 168.0)
+        self.setWindowOpacity(t)                      # 淡入
+        if self._reveal_origin is not None:
+            self.move(self._reveal_origin.x(),
+                      self._reveal_origin.y() - int(14 * (1.0 - t)))  # 上滑
+        if t >= 1.0:
+            if self._reveal_timer is not None:
+                self._reveal_timer.stop()
+            self._reveal_timer = None
+            self._refresh_opacity(force_using=True)
+
     def hide_window(self):
         self._stop_opacity_watch()
+        if self._reveal_timer is not None:
+            self._reveal_timer.stop()
+            self._reveal_timer = None
         self.hide()
 
     def _collapse(self):
@@ -285,12 +366,12 @@ class SearchWindow(QFrame):
         self._list.hide()
         self._detail_view.hide()
         self._mode = "list"
-        self.setFixedSize(W, H_COLLAPSED)
+        self.setFixedSize(self._win_w, H_COLLAPSED)
 
     def _expand(self):
         if not self._expanded:
             self._expanded = True
-            self.setFixedSize(W, H_EXPANDED)
+            self.setFixedSize(self._win_w, H_EXPANDED)
             self._list.show()
 
     def _show_detail(self, key: str):
@@ -318,11 +399,11 @@ class SearchWindow(QFrame):
         self._list.hide()
         self._detail_view.show()
         self._detail_view.verticalScrollBar().setValue(0)
-        self.setFixedSize(W, H_DETAIL)
+        self.setFixedSize(self._win_w, H_DETAIL)
 
     def _set_detail_size(self):
         self._expanded = True
-        self.setFixedSize(W, H_DETAIL)
+        self.setFixedSize(self._win_w, H_DETAIL)
 
     def _back_to_list(self):
         """从详情视图返回结果列表（保留当前结果与输入词）。"""
@@ -333,10 +414,10 @@ class SearchWindow(QFrame):
         self._title.setFocus(Qt.OtherFocusReason)
         if self._list.count():
             self._list.show()
-            self.setFixedSize(W, H_EXPANDED)
+            self.setFixedSize(self._win_w, H_EXPANDED)
             self._list.setCurrentRow(max(0, self._list.currentRow()))
         else:
-            self.setFixedSize(W, H_COLLAPSED)
+            self.setFixedSize(self._win_w, H_COLLAPSED)
 
     def _center(self):
         if self._did_center or not QApplication_available():
@@ -345,7 +426,7 @@ class SearchWindow(QFrame):
         screen = QApplication.primaryScreen()
         if screen is not None:
             geo = screen.availableGeometry()
-            self.move(geo.center().x() - W // 2, geo.top() + int(geo.height() * 0.15))
+            self.move(geo.center().x() - self._win_w // 2, geo.top() + int(geo.height() * 0.15))
         self._did_center = True
 
     # ------------------------------------------------------------------
@@ -467,10 +548,10 @@ class SearchWindow(QFrame):
         return super().event(event)
 
     def enterEvent(self, event):
-        # 鼠标进入立即恢复不透明（不用等 150ms 巡检拍），体验更跟手
+        # 鼠标进入立即起动渐变恢复不透明（160ms 淡入，更跟手；不用等 150ms 巡检拍）
         if not self._is_active_opacity:
             self._is_active_opacity = True
-            self.setWindowOpacity(OPACITY_ACTIVE)
+            self._transition_opacity(OPACITY_ACTIVE)
         super().enterEvent(event)
 
     def leaveEvent(self, event):

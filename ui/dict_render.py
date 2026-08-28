@@ -208,19 +208,19 @@ def convert_dict_html(html: str) -> str:
                     parts.append(f"<span class='chn'>{_esc(c)}</span>")
                 parts.append("</div>")
 
-    # 例句（英文一行 + 中文一行，缩进收窄）
+    # 例句（英文一行 + 中文一行，缩进收窄；不用 <ol> 避免 QText 有序列表内置缩进）
     extra = _extract_examples(html)
     if extra:
-        parts.append(f"<div class='seclabel'>EXAMPLE</div><div class='exlist'><ol class='ex'>")
+        parts.append(f"<div class='seclabel'>EXAMPLE</div><div class='exlist'>")
         for en, cn in extra[:10]:
             if en and cn:
-                parts.append(f"<li class='ex'><span class='exx'>{_esc(en)}</span><br>"
-                             f"<span class='excn'>{_esc(cn)}</span></li>")
+                parts.append(f"<div class='ex'><span class='exx'>{_esc(en)}</span><br>"
+                             f"<span class='excn'>{_esc(cn)}</span></div>")
             elif en:
-                parts.append(f"<li class='ex'><span class='exx'>{_esc(en)}</span></li>")
+                parts.append(f"<div class='ex'><span class='exx'>{_esc(en)}</span></div>")
             elif cn:
-                parts.append(f"<li class='ex'><span class='excn'>{_esc(cn)}</span></li>")
-        parts.append("</ol></div>")
+                parts.append(f"<div class='ex'><span class='excn'>{_esc(cn)}</span></div>")
+        parts.append("</div>")
 
     parts.append("</body></html>")
     return "\n".join(parts)
@@ -355,9 +355,8 @@ _STYLE = (
     # 例句分段标题（小号、大写字距）
     "div.seclabel{font-size:11px;color:#6E6E76;font-weight:700;letter-spacing:1.6px;"
     "text-transform:uppercase;margin:24px 0 8px;}"
-    "div.exlist{margin:0;}"
-    "ol.ex{margin:0;padding:0;list-style:none;}"
-    "ol.ex li.ex{margin:2px 0;padding-left:4px;border-left:2px solid #2E2E36;color:#D3D3DA;list-style:none;}"
+    "div.exlist{margin:0;padding-left:1px;}"
+    "div.ex{margin:3px 0;padding-left:6px;border-left:2px solid #2E2E36;color:#D3D3DA;}"
     "span.exx{color:#E8E8EE;font-size:14.5px;line-height:1.55;}"
     "span.excn{color:#9AA0A6;font-size:13.5px;line-height:1.5;}"
     "table{border-collapse:collapse;} td,th{padding:3px 10px;font-size:15px;}"

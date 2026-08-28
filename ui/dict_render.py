@@ -355,9 +355,9 @@ _STYLE = (
             # 例句分段标题（小号、大写字距）
             "div.seclabel{font-size:11px;color:#6E6E76;font-weight:700;letter-spacing:1.6px;"
             "text-transform:uppercase;margin:22px 0 10px;}"
-            # 例句：引用块样式（淡色背景块 + 圆角 + 内边距），弱一档的正文③级
-            "div.exlist{margin:0;}"
-            "div.ex{margin:8px 0;padding:8px 12px 9px;background:#23232B;border-radius:10px;color:#D0D0D8;}"
+            # 例句：透明背景（无引用块），保留缩进与标题，正文③级弱化
+            "div.exlist{margin:0;padding-left:2px;}"
+            "div.ex{margin:7px 0;padding-left:10px;border-left:2px solid #2A2A33;color:#D0D0D8;}"
             "span.exx{color:#E8E8EE;font-size:14px;line-height:1.5;}"
             "span.excn{color:#9AA0A6;font-size:13px;line-height:1.45;}"
             "table{border-collapse:collapse;} td,th{padding:3px 10px;font-size:15px;}"

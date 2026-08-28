@@ -251,7 +251,6 @@ class SearchWindow(QFrame):
         self._resize_timer.timeout.connect(self._resize_tick)
         self._resize_from = 0
         self._resize_to = 0
-        self._resize_t0 = 0
         # 视图状态：'list'（联想列表）/ 'detail'（详情视图）
         self._mode = "list"
         self._current_detail_key = None
@@ -437,12 +436,23 @@ class SearchWindow(QFrame):
             self.setFixedSize(self._win_w, self._resize_to)
             self._resize_timer.stop()
 
-    def _collapse(self):
+    def _collapse(self, animated: bool = False):
+        """收起为极窄搜索条。
+
+        逐字删除到空时优先走「瞬间收起」(animated=False)：若带高度动画，中间 resize
+        会让输入框 placeholder 在局部高度内重新居中，造成“闪现到最下方又回原位”的抖动。
+        瞬间收起则干净利落，placeholder 纹丝不动。展开(输入内容)仍保留平滑动画。
+        """
         self._expanded = False
         self._list.hide()
         self._detail_view.hide()
         self._mode = "list"
-        self._animate_height(H_COLLAPSED)
+        if animated:
+            self._animate_height(H_COLLAPSED)
+        else:
+            if self._resize_timer.isActive():
+                self._resize_timer.stop()   # 中断进行中的高度动画，避免与瞬间收起冲突
+            self.setFixedSize(self._win_w, H_COLLAPSED)
 
     def _expand(self):
         if not self._expanded:

@@ -16,7 +16,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QFrame, QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout, QHBoxLayout,
-    QStyledItemDelegate,
+    QStyledItemDelegate, QTextBrowser,
 )
 from PySide6.QtWidgets import QStyle
 
@@ -31,6 +31,7 @@ SEARCH_DELAY_MS = 60      # 输入去抖
 CARD_RADIUS = 14
 W, H_COLLAPSED = 520, 68   # 长条搜索框尺寸（收起/唤起时）
 H_EXPANDED = 420           # 输入后有结果时展开高度
+H_DETAIL = 660             # 按 Enter 进入"详情视图"时的窗口高度
 
 
 class _ResultDelegate(QStyledItemDelegate):
@@ -93,10 +94,9 @@ class _ResultDelegate(QStyledItemDelegate):
 class SearchWindow(QFrame):
     """Spotlight 式悬浮搜索框。"""
 
-    def __init__(self, searcher: Searcher, detail_factory=None, parent=None):
+    def __init__(self, searcher: Searcher, parent=None):
         super().__init__(parent)
         self._searcher = searcher
-        self._detail_factory = detail_factory or self._default_detail
 
         self.setWindowFlags(
             Qt.FramelessWindowHint
@@ -151,6 +151,19 @@ class SearchWindow(QFrame):
         self._list.itemActivated.connect(self._open_item)
         lay.addWidget(self._list, 1)
 
+        # ---- 内嵌详情视图：按 Enter 后从"结果列表"切换成"详情"（同一窗口内）----
+        self._detail_view = QTextBrowser(self)
+        self._detail_view.setStyleSheet(
+            "QTextBrowser { background: #F4F5F7; border: none;"
+            " selection-background-color: #0A84FF; selection-color: #ffffff; }"
+            "QScrollBar:vertical { width: 8px; background: transparent;}"
+            "QScrollBar::handle:vertical { background: #C9CBD1; min-height: 30px; border-radius:4px;}"
+            "QScrollBar::add-line, QScrollBar::sub-line { height: 0; }"
+        )
+        self._detail_view.setOpenExternalLinks(True)
+        self._detail_view.hide()
+        lay.addWidget(self._detail_view, 1)
+
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(SEARCH_DELAY_MS)
@@ -162,6 +175,9 @@ class SearchWindow(QFrame):
         self._drag_offset = None
         self._expanded = False
         self._last_query = ""
+        # 视图状态：'list'（联想列表）/ 'detail'（详情视图）
+        self._mode = "list"
+        self._current_detail_key = None
 
         # 透明度巡检器：不依赖 WindowDeactivate/Activate 事件(工具窗常漏发)，
         # 周期性检查「窗口是否正被使用(有焦点或鼠标停留)」来决定透明与否，
@@ -195,13 +211,6 @@ class SearchWindow(QFrame):
         if opaque != self._is_active_opacity:
             self._is_active_opacity = opaque
             self.setWindowOpacity(OPACITY_ACTIVE if opaque else OPACITY_FOCUS_LOST)
-
-    # ------------------------------------------------------------------
-    # 默认详情窗口工厂
-    # ------------------------------------------------------------------
-    def _default_detail(self, parent=None):
-        from ui.detail_window import DetailWindow
-        return DetailWindow(parent)
 
     # ------------------------------------------------------------------
     # 绘制：手绘圆角半透明卡片（保障背景可见）
@@ -247,10 +256,14 @@ class SearchWindow(QFrame):
         self.show()
         self.raise_()
         self.activateWindow()
-        self._title.setFocus(Qt.OtherFocusReason)
         # 启动透明度巡检器，让窗口随焦点/鼠标实时透明(失焦即透明)
         self._start_opacity_watch()
         txt = self._title.text().strip()
+        if self._mode == "detail":
+            # 之前停在详情视图：恢复详情（不干扰已渲染内容）
+            self._set_detail_size()
+            self._title.setFocus(Qt.OtherFocusReason)
+            return
         if txt:
             # 结果已就绪且文本没变, 不再重复搜索(避免闪烁与开销)
             if getattr(self, "_last_query", None) == txt and self._list.count():
@@ -269,6 +282,8 @@ class SearchWindow(QFrame):
     def _collapse(self):
         self._expanded = False
         self._list.hide()
+        self._detail_view.hide()
+        self._mode = "list"
         self.setFixedSize(W, H_COLLAPSED)
 
     def _expand(self):
@@ -276,6 +291,47 @@ class SearchWindow(QFrame):
             self._expanded = True
             self.setFixedSize(W, H_EXPANDED)
             self._list.show()
+
+    def _show_detail(self, key: str):
+        """把窗口切换到"详情视图"：隐藏结果列表，显示内嵌详情正文。"""
+        if not key:
+            return
+        display_key, html = self._searcher.lookup(key)
+        from ui.dict_render import convert_dict_html
+        try:
+            if html:
+                nice = convert_dict_html(html)
+            else:
+                nice = f"<p style='color:#8E8E93;padding:16px'>未找到该词条：{key}</p>"
+        except Exception:
+            nice = f"<p style='color:#8E8E93;padding:16px'>无法解析该词条：{key}</p>"
+        self._detail_view.setHtml(nice)
+        self._detail_view.document().setDefaultStyleSheet("")  # 已由 dict_render 内联样式
+        self._current_detail_key = key
+        self._mode = "detail"
+        # 输入框保持用户查询词不变（返回列表时列表/联想原样恢复）
+        self._list.hide()
+        self._detail_view.show()
+        self._detail_view.verticalScrollBar().setValue(0)
+        self.setFixedSize(W, H_DETAIL)
+
+    def _set_detail_size(self):
+        self._expanded = True
+        self.setFixedSize(W, H_DETAIL)
+
+    def _back_to_list(self):
+        """从详情视图返回结果列表（保留当前结果与输入词）。"""
+        if self._mode != "detail":
+            return
+        self._mode = "list"
+        self._detail_view.hide()
+        self._title.setFocus(Qt.OtherFocusReason)
+        if self._list.count():
+            self._list.show()
+            self.setFixedSize(W, H_EXPANDED)
+            self._list.setCurrentRow(max(0, self._list.currentRow()))
+        else:
+            self.setFixedSize(W, H_COLLAPSED)
 
     def _center(self):
         if self._did_center or not QApplication_available():
@@ -291,6 +347,9 @@ class SearchWindow(QFrame):
     # 搜索
     # ------------------------------------------------------------------
     def _on_text_changed(self, _text):
+        # 用户在详情视图中开始输入 → 自动切回"列表待输入"状态
+        if self._mode == "detail":
+            self._back_to_list()
         self._timer.start()
 
     def _do_search(self, _seq=0):
@@ -333,57 +392,25 @@ class SearchWindow(QFrame):
         return self._title.text().strip() or None
 
     def _on_return(self):
-        self._open_word(self._current_key())
+        if self._mode == "detail":
+            # 已在详情视图，Enter 无操作（避免重复切换）
+            return
+        self._show_detail(self._current_key())
 
     def _open_item(self, item):
-        self._open_word(item.data(Qt.UserRole))
-
-    def _open_word(self, key: str, detail: "DetailWindow | None" = None):
-        if not key:
-            return
-        display_key, html = self._searcher.lookup(key)
-        if detail is None:
-            detail = self._detail_factory()
-        if html:
-            try:
-                from ui.dict_render import convert_dict_html
-                nice = convert_dict_html(html)
-                detail.set_html(display_key or key, nice)
-            except Exception:
-                detail.set_html(display_key or key,
-                                f"<p style='color:#888'>无法解析该词条：{key}</p>")
-        else:
-            detail.set_html(display_key or key,
-                            f"<p style='color:#888'>未找到该词条：{key}</p>")
-        self._place_detail(detail)
-        detail.show()
-        detail.raise_()
-        detail.activateWindow()
-        # 持有引用，避免局部变量被回收导致窗口消失
-        if not hasattr(self, "_details"):
-            self._details = []
-        self._details.append(detail)
-
-    def _place_detail(self, detail):
-        """把详情窗口放到搜索窗右侧；若会越界则放到下方（都在屏内）。"""
-        from PySide6.QtWidgets import QApplication
-        screen = QApplication.primaryScreen()
-        sr = screen.availableGeometry() if screen else None
-        g = self.geometry()
-        x = g.right() + 14
-        y = g.top()
-        dw = detail.width()
-        if sr and x + dw > sr.right() + 10:
-            x = max(sr.left(), sr.right() - dw - 10)  # 太靠右就挪回屏内
-            y = min(y, sr.bottom() - detail.height())
-        detail.move(x, max(0, y))
+        # 鼠标点击结果项同样进入详情视图
+        self._show_detail(item.data(Qt.UserRole))
 
     # ------------------------------------------------------------------
     # 键盘：Esc 隐藏
     # ------------------------------------------------------------------
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key.Key_Escape:
-            self.hide_window()
+            # 详情视图：Esc 先返回结果列表；列表视图：Esc 隐藏整个窗口
+            if self._mode == "detail":
+                self._back_to_list()
+            else:
+                self.hide_window()
             event.accept()
             return
         super().keyPressEvent(event)
@@ -401,6 +428,13 @@ class SearchWindow(QFrame):
     def _handle_nav_key(self, event: "QKeyEvent") -> bool:
         """处理导航按键。返回 True 表示已消费。"""
         key = event.key()
+        if key == Qt.Key.Key_Escape:
+            if self._mode == "detail":
+                self._back_to_list()
+            else:
+                self.hide_window()
+            event.accept()
+            return True
         if key in (Qt.Key.Key_Down, Qt.Key.Key_Up) and self._list.isVisible():
             n = self._list.count()
             if n <= 0:

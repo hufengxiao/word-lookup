@@ -68,25 +68,25 @@ def main():
     if not (row_after_down == 1 and row_after_up == 0):
         raise RuntimeError("FAIL: ↑/↓ 未切换联想选中项")
 
-    # 打开详情：验证详情窗口被创建并显示、内容非空
-    before = [w.__class__.__name__ for w in app.topLevelWidgets()]
-    win._open_word("apple")
+    # 打开详情：应切换进"详情视图"，详情正文渲染进内嵌视图（不再弹独立窗口）
+    win._title.setText("app")
+    win._do_search()
+    win._show_detail("apple")
     app.processEvents()
-    after = [w.__class__.__name__ for w in app.topLevelWidgets()]
-    step(f"详情前 top: {before}")
-    step(f"详情后 top: {after}")
-    from ui.detail_window import DetailWindow
-    dlist = [w for w in app.topLevelWidgets() if isinstance(w, DetailWindow)]
-    detail_refs = getattr(win, "_details", [])
-    step(f"详情窗口: top-level={len(dlist)} 持有引用={len(detail_refs)}")
-    shown = [w for w in dlist+detail_refs if w.isVisible()]
-    step(f"详情可见: {len(shown)}")
-    if shown:
-        doc = shown[0]._browser.document()
-        txt = doc.toPlainText()
-        step(f"详情内容字符数: {len(txt)}" if txt.strip() else "警告: 详情内容为空")
-    else:
-        raise RuntimeError("FAIL: 详情窗口未显示 (top-level 或引用列表均为空)")
+    step(f"视图模式: {win._mode} (应 detail)")
+    assert win._mode == "detail", "FAIL: 未进入详情视图模式"
+    step(f"详情视图可见: {win._detail_view.isVisible()}, 列表隐藏: {not win._list.isVisible()}")
+    assert win._detail_view.isVisible(), "FAIL: 内嵌详情视图未显示"
+    doc = win._detail_view.document()
+    txt = doc.toPlainText()
+    step(f"详情内容字符数: {len(txt)}" if txt.strip() else "警告: 详情内容为空")
+    step(f"窗口高度(详情): {win.height()} (应={__import__('ui.search_window', fromlist=['H_DETAIL']).H_DETAIL})")
+
+    # Esc 返回列表视图
+    ev_esc = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key_Escape, Qt.KeyboardModifier.NoModifier)
+    win.keyPressEvent(ev_esc)
+    step(f"详情按 Esc → 返回列表: mode={win._mode}, 详情隐藏={not win._detail_view.isVisible()}, 列表可见={win._list.isVisible()}")
+    assert win._mode == "list" and not win._detail_view.isVisible(), "FAIL: Esc 未返回列表视图"
 
     # 详情渲染器: 用词典原文喂给 dict_render, 验证生成 h1+释义卡片
     raw = searcher.lookup("apple")[1]

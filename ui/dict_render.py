@@ -333,37 +333,38 @@ _HEADER = "<!DOCTYPE html>"
 _STYLE = (
     "<style>"
     # ===== 深色 Apple 词典排版（iOS 夜间观感）=====
-        # 字体栈：英文走 Segoe UI(与搜索界面一致)，中文回退到微软雅黑，避免拼音/默认宋体字号不一
-        "body{font-family:'Segoe UI','Microsoft YaHei','PingFang SC',sans-serif;"
-        "font-size:15px;color:#F2F2F4;line-height:1.6;"
-        "background:#1E1E24;padding:2px 0px 40px;}"
-        # 词头：靠左、与正文同一左边缘(复用 via setDocumentMargin 的左右边距, 不再贴边)
-        "div.word{font-size:40px;font-weight:650;letter-spacing:-0.4px;color:#FFFFFF;"
-        "text-align:left;margin:0 0 8px;}"
-        # 词元信息行（词性与音标）靠左对齐词头
-        "div.posline{margin:0 0 12px;text-align:left;}"
-    "span.posband{color:#0A84FF;font-style:italic;font-weight:600;font-size:17px;margin-right:14px;}"
-    "span.phon{color:#8E8E93;font-size:16px;}"
-    "span.sep{color:#3F3F46;margin:0 8px;}"
-    # 同形词小节：发线分隔（发线从左侧伸到边缘，视觉上有"分割条"）
-    "div.possep{border-top:1px solid #2E2E36;margin:18px 0 6px;padding-top:14px;}"
-    # 单个释义：def 与 chn 用 <br> 同块，紧贴
-    "div.sense{margin:0 0 16px;padding-left:2px;}"
-    "span.sensenum{color:#0A84FF;font-weight:700;margin-right:9px;font-size:15.5px;}"
-    "span.def{color:#F4F4F6;display:inline;font-size:15.5px;}"
-    "span.chn{color:#7FD1FF;font-weight:550;font-size:16px;display:inline;}"
-    # 例句分段标题（小号、大写字距）
-    "div.seclabel{font-size:11px;color:#6E6E76;font-weight:700;letter-spacing:1.6px;"
-    "text-transform:uppercase;margin:24px 0 8px;}"
-    "div.exlist{margin:0;padding-left:1px;}"
-    "div.ex{margin:3px 0;padding-left:6px;border-left:2px solid #2E2E36;color:#D3D3DA;}"
-    "span.exx{color:#E8E8EE;font-size:14.5px;line-height:1.55;}"
-    "span.excn{color:#9AA0A6;font-size:13.5px;line-height:1.5;}"
-    "table{border-collapse:collapse;} td,th{padding:3px 10px;font-size:15px;}"
-    "img{max-width:100%;background:transparent;border:0;}"
-    "a{color:#0A84FF;text-decoration:none;}"
-    "</style>"
-)
+            # 字体栈：英文走 Segoe UI(与搜索界面一致)，中文回退到微软雅黑，避免拼音/默认宋体字号不一
+            "body{font-family:'Segoe UI','Microsoft YaHei','PingFang SC',sans-serif;"
+            "font-size:15px;color:#F2F2F4;line-height:1.62;"
+            "background:#1E1E24;padding:2px 0px 40px;}"
+            # 词头：三梯队最高权重，硕大但不刺眼（收敛到 32px，避免 40px 喧宾夺主）
+            "div.word{font-size:32px;font-weight:700;letter-spacing:-0.5px;color:#FFFFFF;"
+            "text-align:left;margin:0 0 6px;}"
+            # 词元信息行（词性与音标）靠左对齐词头，小一号
+            "div.posline{margin:0 0 12px;text-align:left;}"
+            "span.posband{color:#0A84FF;font-style:italic;font-weight:600;font-size:16px;margin-right:14px;}"
+            "span.phon{color:#8E8E93;font-size:15px;}"
+            "span.sep{color:#3F3F46;margin:0 8px;}"
+        # 同形词小节：发线分隔
+            "div.possep{border-top:1px solid #2E2E36;margin:18px 0 6px;padding-top:14px;}"
+            # 释义：最强正文权重（梯级②），偏白；序号苹果蓝
+            "div.sense{margin:0 0 15px;padding-left:2px;}"
+            "span.sensenum{color:#0A84FF;font-weight:700;margin-right:8px;font-size:16px;}"
+            "span.def{color:#FFFFFF;display:inline;font-size:16px;}"
+            "span.chn{color:#7FD1FF;font-weight:550;font-size:15.5px;display:inline;}"
+            # 例句分段标题（小号、大写字距）
+            "div.seclabel{font-size:11px;color:#6E6E76;font-weight:700;letter-spacing:1.6px;"
+            "text-transform:uppercase;margin:22px 0 10px;}"
+            # 例句：引用块样式（淡色背景块 + 圆角 + 内边距），弱一档的正文③级
+            "div.exlist{margin:0;}"
+            "div.ex{margin:8px 0;padding:8px 12px 9px;background:#23232B;border-radius:10px;color:#D0D0D8;}"
+            "span.exx{color:#E8E8EE;font-size:14px;line-height:1.5;}"
+            "span.excn{color:#9AA0A6;font-size:13px;line-height:1.45;}"
+            "table{border-collapse:collapse;} td,th{padding:3px 10px;font-size:15px;}"
+            "img{max-width:100%;background:transparent;border:0;}"
+            "a{color:#0A84FF;text-decoration:none;}"
+        "</style>"
+    )
 
 
 # 兼容旧调用

@@ -89,27 +89,68 @@ class _ResultDelegate(QStyledItemDelegate):
 
         key = index.data(Qt.UserRole) or (index.data(Qt.DisplayRole) or "")
         summ = index.data(Qt.UserRole + 1) or ""
+        # 行类型：从释义预览首词推断词性（n/v/adj/adv/pron 等），无则显示首字母大写
+        row_type = self._row_type(summ, key)
 
         kc = self._key_on if selected else self._key_off
         sum_color = self._sum_on if selected else self._sum_off
 
-        # 词头
+        # #5 类型图标：左侧一个小圆角方形，内放词性缩写
+        icon_x = r.left() + 8
+        icon_size = 22
+        icon_cy = r.center().y()
+        painter.setBrush(QColor(255, 255, 255, 46) if selected else QColor(255, 255, 255, 20))
+        painter.drawRoundedRect(QRect(icon_x, icon_cy - icon_size // 2, icon_size, icon_size), 6, 6)
+        ic_font = QFont("Segoe UI", 9, QFont.DemiBold)
+        painter.setFont(ic_font)
+        painter.setPen(QColor(255, 255, 255, 210))
+        painter.drawText(QRect(icon_x, icon_cy - icon_size // 2, icon_size, icon_size),
+                         Qt.AlignCenter, row_type)
+
+        # 词头（留出类型图标占位）
+        icon_width = icon_size + 10
+        dx = icon_x + icon_width if row_type else 0
         painter.setFont(self._key_font)
-        kx = r.left() + 8
+        kx = dx + 2
         km = painter.fontMetrics().horizontalAdvance(key) + 8
         painter.setPen(kc)
         painter.drawText(QRect(kx, r.top(), km, r.height()),
                          Qt.AlignLeft | Qt.AlignVCenter, key)
 
-        # 释义
-        if summ:
-            painter.setFont(self._sum_font)
-            painter.setPen(sum_color)
-            avail = r.right() - (kx + km) - 4
-            if avail > 0:
-                elide = painter.fontMetrics().elidedText(summ, Qt.ElideRight, avail)
-                painter.drawText(QRect(kx + km, r.top(), avail, r.height()),
-                                 Qt.AlignLeft | Qt.AlignVCenter, elide)
+        # #5 Enter 快捷提示：选中时在右侧显示小徽标
+        hx = None
+        if selected:
+            hint = "Enter"
+            hint_font = QFont("Segoe UI", 9, QFont.Normal)
+            painter.setFont(hint_font)
+            hw = painter.fontMetrics().horizontalAdvance("Enter") + 16
+            hx = r.right() - hw
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(0, 0, 0, 66))
+            painter.drawRoundedRect(QRect(hx, r.center().y() - 10, hw, 20), 10, 10)
+            painter.setPen(QColor(255, 255, 255, 195))
+            painter.drawText(QRect(hx, r.center().y() - 10, hw, 20), Qt.AlignCenter, hint)
+
+        # 释义（在词头右侧、Enter 徽标左侧之间）
+        painter.setFont(self._sum_font)
+        painter.setPen(sum_color)
+        right_limit = (hx - 8) if hx is not None else r.right() - 4
+        avail = right_limit - (kx + km) - 4
+        if avail > 0:
+            elide = painter.fontMetrics().elidedText(summ, Qt.ElideRight, avail)
+            painter.drawText(QRect(kx + km, r.top(), avail, r.height()),
+                             Qt.AlignLeft | Qt.AlignVCenter, elide)
+
+    @staticmethod
+    def _row_type(summ, key):
+        """从释义预览解析词性缩写，作为类型图标内容。"""
+        if not summ:
+            return key[0].upper() if key else "?"
+        head = summ.split()[0].lstrip(",;").strip().lower() if summ.split() else ""
+        aliases = {"n": "n", "noun": "n", "v": "v", "verb": "v", "adj": "adj",
+                   "adjective": "adj", "adv": "adv", "adverb": "adv", "prep": "prep",
+                   "pron": "pron", "conj": "conj", "interj": "int", "phr": "phr"}
+        return aliases.get(head, key[0].upper() if key else "?")
 
 
 class SearchWindow(QFrame):
@@ -204,6 +245,13 @@ class SearchWindow(QFrame):
         self._fade_timer.timeout.connect(self._fade_tick)
         self._fade_target = OPACITY_ACTIVE
         self._reveal_timer = None   # 唤起浮现动画（淡入+上滑+微缩放）
+        # 高度动画状态（展开/收起连续动画，替代 setFixedSize 瞬间跳变）
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setInterval(14)
+        self._resize_timer.timeout.connect(self._resize_tick)
+        self._resize_from = 0
+        self._resize_to = 0
+        self._resize_t0 = 0
         # 视图状态：'list'（联想列表）/ 'detail'（详情视图）
         self._mode = "list"
         self._current_detail_key = None
@@ -333,7 +381,7 @@ class SearchWindow(QFrame):
             # 结果已就绪且文本没变, 不再重复搜索(避免闪烁与开销)
             if getattr(self, "_last_query", None) == txt and self._list.count():
                 self._list.show()
-                self.setFixedSize(self._win_w, H_EXPANDED if self._expanded else H_COLLAPSED)
+                self._animate_height(H_EXPANDED if self._expanded else H_COLLAPSED)
             else:
                 self._do_search()
         else:
@@ -361,18 +409,46 @@ class SearchWindow(QFrame):
             self._reveal_timer = None
         self.hide()
 
+    # ------------------------------------------------------------------
+    # 高度连续动画（展开/收起/进详情），替代 setFixedSize 的瞬间跳变
+    # ------------------------------------------------------------------
+    RESIZE_MS = 170
+    def _animate_height(self, target: int):
+        """从当前高度向 target 做 ~170ms 高度插值（Spotlight 式收缩过渡）。
+
+        用「帧计数」而非墙钟推进，保证真实 14ms 定时器与测试逐帧驱动得到一致结果。
+        """
+        self._resize_from = self.height()
+        self._resize_to = target
+        self._resize_ticks = 0
+        self._resize_total = max(1, int(self.RESIZE_MS / 14))
+        # 动画期间放开固定尺寸约束，才能连续 resize
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(100000, 100000)
+        if not self._resize_timer.isActive():
+            self._resize_timer.start()
+
+    def _resize_tick(self):
+        self._resize_ticks += 1
+        t = min(1.0, self._resize_ticks / float(self._resize_total))
+        mid = int(self._resize_from + (self._resize_to - self._resize_from) * t)
+        self.resize(self._win_w, max(H_COLLAPSED, mid))
+        if t >= 1.0:
+            self.setFixedSize(self._win_w, self._resize_to)
+            self._resize_timer.stop()
+
     def _collapse(self):
         self._expanded = False
         self._list.hide()
         self._detail_view.hide()
         self._mode = "list"
-        self.setFixedSize(self._win_w, H_COLLAPSED)
+        self._animate_height(H_COLLAPSED)
 
     def _expand(self):
         if not self._expanded:
             self._expanded = True
-            self.setFixedSize(self._win_w, H_EXPANDED)
             self._list.show()
+            self._animate_height(H_EXPANDED)
 
     def _show_detail(self, key: str):
         """把窗口切换到"详情视图"：隐藏结果列表，显示内嵌详情正文。"""
@@ -399,11 +475,11 @@ class SearchWindow(QFrame):
         self._list.hide()
         self._detail_view.show()
         self._detail_view.verticalScrollBar().setValue(0)
-        self.setFixedSize(self._win_w, H_DETAIL)
+        self._animate_height(H_DETAIL)
 
     def _set_detail_size(self):
         self._expanded = True
-        self.setFixedSize(self._win_w, H_DETAIL)
+        self._animate_height(H_DETAIL)
 
     def _back_to_list(self):
         """从详情视图返回结果列表（保留当前结果与输入词）。"""
@@ -414,10 +490,10 @@ class SearchWindow(QFrame):
         self._title.setFocus(Qt.OtherFocusReason)
         if self._list.count():
             self._list.show()
-            self.setFixedSize(self._win_w, H_EXPANDED)
+            self._animate_height(H_EXPANDED)
             self._list.setCurrentRow(max(0, self._list.currentRow()))
         else:
-            self.setFixedSize(self._win_w, H_COLLAPSED)
+            self._animate_height(H_COLLAPSED)
 
     def _center(self):
         if self._did_center or not QApplication_available():
@@ -455,8 +531,11 @@ class SearchWindow(QFrame):
         self._list.clear()
         if not rows:
             self._expand()
-            it = QListWidgetItem("无匹配结果")
-            it.setFlags(Qt.NoItemFlags)  # 占位项: 不可选/不可激活
+            # #9 空态：友好的无结果提示（禁用，不可选/不可激活）
+            it = QListWidgetItem(f"没有找到 “{q}”")
+            it.setData(Qt.UserRole, "")
+            it.setData(Qt.UserRole + 1, "试试更少字、检查拼写，或按 Esc 关闭")
+            it.setFlags(Qt.NoItemFlags)
             self._list.addItem(it)
             self._list.setCurrentRow(-1)
             return

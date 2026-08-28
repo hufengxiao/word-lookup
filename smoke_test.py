@@ -81,6 +81,14 @@ def main():
     txt = doc.toPlainText()
     step(f"详情内容字符数: {len(txt)}" if txt.strip() else "警告: 详情内容为空")
     step(f"窗口高度(详情): {win.height()} (应={__import__('ui.search_window', fromlist=['H_DETAIL']).H_DETAIL})")
+    # 高度动画回归：把手动推进 _resize_tick 直到目标，验证确实到达 H_DETAIL
+    import ui.search_window as _sw
+    for _ in range(60):
+        win._resize_tick()
+        if win._resize_to == win.height() and not win._resize_timer.isActive():
+            break
+    assert win.height() == _sw.H_DETAIL, f"FAIL: 详情高度动画未到达 H_DETAIL (got {win.height()})"
+    step(f"高度动画达到详情高度: {win.height()} PASS")
 
     # Esc 返回列表视图
     ev_esc = QKeyEvent(QEvent.Type.KeyPress, Qt.Key_Escape, Qt.KeyboardModifier.NoModifier)

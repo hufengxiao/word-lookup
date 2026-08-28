@@ -174,7 +174,7 @@ def convert_dict_html(html: str) -> str:
     parts = [_HEADER, "<html><head><meta charset='utf-8'></head><body>", _STYLE]
 
     # ---------- 宿主大标题 ----------
-    parts.append(f"<h1>{_esc(head_disp)}</h1>")
+    parts.append(f"<div class='word'>{_esc(head_disp)}</div>")
 
     for ei, e in enumerate(entries):
         # 第0个词块的词性跟在 h1 后; 之后的词块独立小节
@@ -192,7 +192,8 @@ def convert_dict_html(html: str) -> str:
                          f"<span class='posband'>{pos_txt or '·'}</span>"
                          + _ph_html(e["phons"]) + "</div>")
 
-        # 该词块的所有释义
+        # 该词块的所有释义：def + chn 放进同一个 <div>（用 <br> 换行而非分块），
+        # 避免 QTextDocument 把相邻块之间插入大段空白的毛病，让英文/中文贴得更紧。
         if e["defs"]:
             for i, (d, c) in enumerate(e["defs"], 1):
                 if not d and not c:
@@ -201,14 +202,16 @@ def convert_dict_html(html: str) -> str:
                 parts.append(f"<span class='sensenum'>{i}.</span>")
                 if d:
                     parts.append(f"<span class='def'>{_esc(d)}</span>")
+                if d and c:
+                    parts.append("<br>")
                 if c:
-                    parts.append(f"<div class='chn'>{_esc(c)}</div>")
+                    parts.append(f"<span class='chn'>{_esc(c)}</span>")
                 parts.append("</div>")
 
     # 例句
     extra = _extract_examples(html)
     if extra:
-        parts.append(f"<h2>例句</h2><div class='exlist'><ol class='ex'>")
+        parts.append(f"<div class='seclabel'>EXAMPLE</div><div class='exlist'><ol class='ex'>")
         for e in extra[:12]:
             parts.append(f"<li class='ex'>{_esc(e)}</li>")
         parts.append("</ol></div>")
@@ -274,34 +277,36 @@ def _fallback(html: str) -> str:
 _HEADER = "<!DOCTYPE html>"
 _STYLE = (
     "<style>"
-    "body{font-family:'Segoe UI','PingFang SC','Helvetica Neue',sans-serif;"
-    "font-size:15.5px;color:#1D1D1F;line-height:1.7;"
-    "background:#F4F5F7;padding:26px 34px 40px;}"
-    "h1{font-size:40px;font-weight:700;letter-spacing:-0.3px;color:#111114;"
-    "margin:2px 0 8px;}"
-    "div.meta{color:#6E6E73;font-size:15px;margin:0 0 6px;}"
-    "span.pos{color:#0A84FF;font-style:italic;font-weight:550;margin-right:10px;font-size:16px;}"
+    # ===== 深色 Apple 词典排版（iOS 夜间观感）=====
+    "body{font-family:'Segoe UI','PingFang SC',sans-serif;"
+    "font-size:15px;color:#F2F2F4;line-height:1.6;"
+    "background:#1E1E24;padding:14px 26px 44px;}"
+    # 词头：大而轻黑，字距收紧（用 class 而非 h1，因 QText 对 h1-h6 标签忽略样式）
+    "div.word{font-size:36px;font-weight:650;letter-spacing:-0.4px;color:#FFFFFF;"
+    "margin:0 0 8px;}"
+    # 词元信息行（词性+音标）
+    "div.posline{margin:0 0 6px;}"
+    "span.posband{color:#0A84FF;font-style:italic;font-weight:600;font-size:16px;margin-right:12px;}"
     "span.phon{color:#8E8E93;font-size:15px;}"
-    "span.sep{color:#C7C7CC;margin:0 8px;}"
-    "div.posline{margin:6px 0 2px;}"
-    "span.posband{color:#0A84FF;font-style:italic;font-weight:550;font-size:16px;}"
-    "div.gap{height:10px;}"
-    "div.possep{border-top:1px solid #E7E9ED;margin-top:16px;padding-top:14px;}"
-    "div.sense{margin:0 0 4px;padding-left:2px;}"
-    "span.sensenum{color:#0A84FF;font-weight:650;margin-right:8px;font-size:15.5px;}"
-    "span.def{color:#1D1D1F;}"
-    "div.chn{color:#14806B;font-weight:610;margin-top:1px;margin-bottom:10px;"
-    "padding-left:22px;font-size:15.5px;}"
-    "h2{font-size:11.5px;color:#8E8E93;font-weight:700;letter-spacing:1.6px;"
-    "text-transform:uppercase;margin:26px 0 8px;}"
-    "div.exlist{color:#3A3A3E;margin:0;}"
-    "ol.ex{margin:0;padding:0 0 0 4px;list-style:none;}"
-    "ol.ex li.ex{margin:5px 0;color:#3A3A3E;list-style:none;}"
-    "ol.ex li.ex:before{content:'\\2022  ';color:#0A84FF;margin-right:4px;}"
+    "span.sep{color:#3F3F46;margin:0 7px;}"
+    # 同形词小节：发线分隔
+    "div.possep{border-top:1px solid #2E2E36;margin:14px 0 4px;padding-top:12px;}"
+    # 单个释义：def 与 chn 用 <br> 同块，紧贴
+    "div.sense{margin:0 0 14px;}"
+    "span.sensenum{color:#0A84FF;font-weight:700;margin-right:8px;font-size:15px;}"
+    "span.def{color:#F4F4F6;display:inline;}"
+    "span.chn{color:#7FD1FF;font-weight:550;font-size:15.5px;display:inline;}"
+    # 例句分段标题（小号、大写字距）
+    "div.seclabel{font-size:11px;color:#6E6E76;font-weight:700;letter-spacing:1.6px;"
+    "text-transform:uppercase;margin:24px 0 8px;}"
+    "div.exlist{margin:0;}"
+    "ol.ex{margin:0;padding:0;list-style:none;}"
+    "ol.ex li.ex{margin:6px 0;padding-left:14px;border-left:2px solid #2E2E36;"
+    "color:#D3D3DA;list-style:none;}"
+    "ol.ex li.ex:before{content:'\\2022';color:#0A84FF;margin-right:6px;font-size:11px;}"
     "table{border-collapse:collapse;} td,th{padding:3px 10px;font-size:15px;}"
-    "ol,ul{margin:4px 0 8px;} li{margin:3px 0;}"
     "img{max-width:100%;background:transparent;border:0;}"
-    "a{color:#0A84FF;}"
+    "a{color:#0A84FF;text-decoration:none;}"
     "</style>"
 )
 

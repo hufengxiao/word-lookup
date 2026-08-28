@@ -154,10 +154,11 @@ class SearchWindow(QFrame):
         # ---- 内嵌详情视图：按 Enter 后从"结果列表"切换成"详情"（同一窗口内）----
         self._detail_view = QTextBrowser(self)
         self._detail_view.setStyleSheet(
-            "QTextBrowser { background: #F4F5F7; border: none;"
+            "QTextBrowser { background: #1E1E24; border: none;"
             " selection-background-color: #0A84FF; selection-color: #ffffff; }"
             "QScrollBar:vertical { width: 8px; background: transparent;}"
-            "QScrollBar::handle:vertical { background: #C9CBD1; min-height: 30px; border-radius:4px;}"
+            "QScrollBar::handle:vertical { background: #45454E; min-height: 30px; border-radius:4px;}"
+            "QScrollBar::handle:vertical:hover { background: #5A5A64; }"
             "QScrollBar::add-line, QScrollBar::sub-line { height: 0; }"
         )
         self._detail_view.setOpenExternalLinks(True)

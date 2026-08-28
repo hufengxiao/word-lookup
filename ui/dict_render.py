@@ -208,12 +208,18 @@ def convert_dict_html(html: str) -> str:
                     parts.append(f"<span class='chn'>{_esc(c)}</span>")
                 parts.append("</div>")
 
-    # 例句
+    # 例句（英文一行 + 中文一行，缩进收窄）
     extra = _extract_examples(html)
     if extra:
         parts.append(f"<div class='seclabel'>EXAMPLE</div><div class='exlist'><ol class='ex'>")
-        for e in extra[:12]:
-            parts.append(f"<li class='ex'>{_esc(e)}</li>")
+        for en, cn in extra[:10]:
+            if en and cn:
+                parts.append(f"<li class='ex'><span class='exx'>{_esc(en)}</span><br>"
+                             f"<span class='excn'>{_esc(cn)}</span></li>")
+            elif en:
+                parts.append(f"<li class='ex'><span class='exx'>{_esc(en)}</span></li>")
+            elif cn:
+                parts.append(f"<li class='ex'><span class='excn'>{_esc(cn)}</span></li>")
         parts.append("</ol></div>")
 
     parts.append("</body></html>")
@@ -231,20 +237,69 @@ def _ph_html(phons):
 
 
 def _extract_examples(html: str) -> list:
-    """尽力提取例句(例句块 <ul class=examples> 或 <span class=x>). 失败返回[]."""
+    """尽力提取例句，返回 [(英文, 中文), ...] 配对。
+
+    真实牛津词典结构：<li><span class="x">英文(含cl/gloss)</span>
+    <xT><chn>中文</chn></xT></li>（部分用 <aT>/<unx>）。
+    解析失败则退化为整段文本，中文为空。
+    """
     import re
+    import html as _h
+
     out = []
-    # 方式1: <ul class="examples">...</ul>
     m = re.search(r'<ul\s+class="examples"[^>]*>(.*?)</ul>', html, re.I | re.S)
     body = m.group(1) if m else html
-    # 提取 li 文本
+
+    def _text(s: str) -> str:
+        s = re.sub(r"<[^>]+>", " ", s)
+        return _h.unescape(re.sub(r"\s+", " ", s)).strip()
+
     for li in re.findall(r"<li[^>]*>(.*?)</li>", body, re.I | re.S):
-        txt = re.sub(r"<[^>]+>", " ", li)
-        import html as _h
-        txt = _h.unescape(re.sub(r"\s+", " ", txt)).strip()
-        if txt:
-            out.append(txt)
+        en = ""
+        # 英文：<span class="x"> 或 <span class="unx"> 的内容（优先保内层，去掉嵌套换标签）
+        for cls in ("unx", "x"):
+            mm = re.search(r'<span\s+class=[\'"]' + cls + r'[\'"]>(.*?)</span>', li, re.I | re.S)
+            if mm:
+                en = _text_preserve_gloss(mm.group(1))
+                break
+        if not en:
+            # 退化为整个 li
+            en = _strip_tags_except(li, {"gloss", "cl"})
+        # 中文：<xT><chn>..</chn></xT> 或 <aT><chn>..</chn></aT>
+        cn = ""
+        for m in re.finditer(r'<(xT|aT)>.*?<chn>(.*?)</chn>.*?</\1>', li, re.I | re.S):
+            cn = _text_cn(m.group(2))
+            if cn:
+                break
+        if en or cn:
+            out.append((en, cn))
     return out
+
+
+def _text_preserve_gloss(s: str):
+    """去标签但保留 gloss/collocation 作为内联引注（换成引号内嵌）。"""
+    import re, html as _h
+    s = re.sub(r'<span\s+class=["\'][^"\']*\bgloss\b[^"\']*["\'][^>]*>(.*?)</span>',
+               lambda m: " (" + _h.unescape(re.sub(r"<[^>]+>", "", m.group(1))) + ")",
+               s, flags=re.I | re.S)
+    return _h.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", s))).strip()
+
+
+def _text_cn(s: str) -> str:
+    import re, html as _h
+    s = re.sub(r"<[^>]+>", "", s)
+    return _h.unescape(re.sub(r"\s+", " ", s)).strip()
+
+
+def _strip_tags_except(s: str, keep: set):
+    """去所有标签，但保留 keep 内标签的内容（如 gloss/cl 内联）。"""
+    import re, html as _h
+    def _repl(m):
+        tag = m.group(0).lower()
+        if any(k in tag for k in keep):
+            return m.group(0)
+        return " "
+    return _h.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", _repl, s))).strip()
 
 
 def _split_phon(phons):
@@ -278,7 +333,8 @@ _HEADER = "<!DOCTYPE html>"
 _STYLE = (
     "<style>"
     # ===== 深色 Apple 词典排版（iOS 夜间观感）=====
-    "body{font-family:'Segoe UI','PingFang SC',sans-serif;"
+        # 字体栈：英文走 Segoe UI(与搜索界面一致)，中文回退到微软雅黑，避免拼音/默认宋体字号不一
+        "body{font-family:'Segoe UI','Microsoft YaHei','PingFang SC',sans-serif;"
         "font-size:15px;color:#F2F2F4;line-height:1.6;"
         "background:#1E1E24;padding:2px 0px 40px;}"
         # 词头：靠左、与正文同一左边缘(复用 via setDocumentMargin 的左右边距, 不再贴边)
@@ -301,9 +357,9 @@ _STYLE = (
     "text-transform:uppercase;margin:24px 0 8px;}"
     "div.exlist{margin:0;}"
     "ol.ex{margin:0;padding:0;list-style:none;}"
-    "ol.ex li.ex{margin:6px 0;padding-left:10px;border-left:2px solid #2E2E36;"
-    "color:#D3D3DA;list-style:none;}"
-    "ol.ex li.ex:before{content:'\\2022';color:#0A84FF;margin-right:5px;font-size:11px;}"
+    "ol.ex li.ex{margin:2px 0;padding-left:4px;border-left:2px solid #2E2E36;color:#D3D3DA;list-style:none;}"
+    "span.exx{color:#E8E8EE;font-size:14.5px;line-height:1.55;}"
+    "span.excn{color:#9AA0A6;font-size:13.5px;line-height:1.5;}"
     "table{border-collapse:collapse;} td,th{padding:3px 10px;font-size:15px;}"
     "img{max-width:100%;background:transparent;border:0;}"
     "a{color:#0A84FF;text-decoration:none;}"

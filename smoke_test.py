@@ -97,6 +97,15 @@ def main():
     step(f"dict_render: h1={'<h1>' in styled} 释义卡片={n_sense}")
     step("dict_render: 生成可读排版 OK" if "<h1>" in styled else "警告: 渲染无词头")
 
+    # 例句英文/中文拆分: 真实牛津结构中 EN(x)与中文(xT><chn>)应分到两行
+    from ui.dict_render import _extract_examples
+    ex_in = ("<ul class='examples'><li><span class='x'>general <span class='gloss'>(= typical)</span> trend</span>"
+             "<xT><chn>\u603b\u8d8b\u52bf</chn></xT></li></ul>")
+    ex_pairs = _extract_examples(ex_in)
+    assert ex_pairs and len(ex_pairs[0]) == 2, "FAIL: 例句未拆成(英文,中文)"
+    _en, _cn = ex_pairs[0]
+    step(f"dict_render 例句拆分: 英文={_en[:18]!r} | 中文={_cn!r} (期望分开两行)")
+
     # 多词性健壮性: 喂一个含多词性(section)的真实结构, 应生成多个词性小节且不崩
     multi = ("<div id='entryContent'><div class='entry'><h1 class='headword'>run</h1>"
              "<span class='pos'>verb</span><ol class='sense_single'>"

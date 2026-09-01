@@ -3,6 +3,16 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.7.14] - 2026-09-01
+
+### 修复
+- **`--version` 终端打印真正的根因**：windowed exe 接回父终端时，把 Win32 `HANDLE` 误当 POSIX `fd` 传给 `io.FileIO`（类型不符必然抛错回到弹窗）。修复为 `msvcrt.open_osfhandle(HANDLE, O_WRONLY)` → `os.fdopen()` 正确转换。请在本机交互终端的 PowerShell / Windows Terminal 实证：
+  ```powershell
+  .\WordLookup.exe --version
+  # 期望直接打印: Word Lookup 0.7.14  (不再弹窗)
+  ```
+- CI 增加 `--version` 输出探针 step（诊断用，不阻塞发布）。
+
 ## [v0.7.13] - 2026-09-01
 
 ### 修复

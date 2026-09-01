@@ -23,7 +23,7 @@ import traceback
 
 # 源码运行/未打包时的回落版本号（发布 exe 的版本号由打包内 version.txt 指定，
 # 由 CI 从 git tag 注入，见 build.yml —— 单一来源彻底根治版本错位）。
-__version__ = "0.7.12DEV"
+__version__ = "0.7.17DEV"
 
 
 def get_version() -> str:

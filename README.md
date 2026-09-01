@@ -29,14 +29,23 @@ oxford-lookup/
 │   ├── lzo.py                 # LZO 跨平台解压（ctypes / python-lzo）
 │   ├── ripemd128.py           # 词典解密哈希
 │   ├── indexer.py             # .mdx → oxford.db 一键构建
-│   └── searcher.py            # Spotlight 式前缀搜索 + 精确查词
+│   ├── searcher.py            # Spotlight 式前缀搜索 + 精确查词
+│   └── summary.py             # 联想结果的中文释义预览提取
 ├── ui/
-│   ├── search_window.py       # 悬浮搜索窗（透明度/拖动/联想）
-│   └── detail_window.py       # 词条详情窗（HTML 渲染）
+│   ├── search_window.py       # 悬浮搜索窗（透明度/拖动/联想/详情内嵌）
+│   ├── detail_window.py       # 词条详情窗（HTML 渲染）
+│   └── dict_render.py         # 牛津 HTML → 深色排版 HTML 语义转换
 ├── hotkey/
 │   └── win_hotkey.py          # Windows 全局热键（RegisterHotKey）
+├── tests/
+│   └── test_dict_render.py    # dict_render / 例句提取的单元测试
+├── smoke_test.py              # 端到端冒烟（搜索/详情/透明度/拖动）
+├── smoke_db.py               # 生成 CI 冒烟用的最小词典库
 ├── requirements.txt
-└── build.md                   # Windows 打包为 exe 的说明
+├── pyproject.toml             # 项目元数据 + ruff / pytest 配置
+├── build.md                   # Windows 打包为 exe 的说明
+├── build_exe.bat *            # 一键打包（Windows）
+└── wordlookup.spec            # PyInstaller 打包配置
 ```
 
 ## 🚀 快速开始

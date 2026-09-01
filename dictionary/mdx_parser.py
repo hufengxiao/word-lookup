@@ -246,7 +246,7 @@ class MDX:
             raise RuntimeError("该词典使用了需要用户注册信息的加密，无法解析")
 
         sf = BytesIO(block)
-        num_key_blocks = self._read_number(sf)
+        _num_key_blocks = self._read_number(sf)
         self._num_entries = self._read_number(sf)
         if self._version >= 2.0:
             self._read_number(sf)  # key_block_info_decomp_size
@@ -274,9 +274,9 @@ class MDX:
         f.seek(self._record_block_offset)
 
         num_record_blocks = self._read_number(f)
-        self._read_number(f)  # num_entries 应等于 self._num_entries
-        record_block_info_size = self._read_number(f)
-        record_block_size = self._read_number(f)
+        _num_entries = self._read_number(f)  # 应等于 self._num_entries
+        _record_block_info_size = self._read_number(f)
+        _record_block_size = self._read_number(f)
 
         record_block_info_list = []
         for _ in range(num_record_blocks):
@@ -349,7 +349,7 @@ class MDX:
         if isinstance(key_text, str):
             key_text = key_text.encode("utf-8")
         target = key_text.lower()
-        for kid, ktext in self._key_list:
+        for _kid, ktext in self._key_list:
             if ktext.lower() == target:
                 # 找到词条，直接进入 record block 迭代，取到即返回
                 for kt, html in self._iter_record_blocks():

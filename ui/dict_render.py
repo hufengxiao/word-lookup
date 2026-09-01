@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 词典 HTML → 可读排版转换器。
 
@@ -222,7 +221,7 @@ def convert_dict_html(html: str) -> str:
     # 例句（英文一行 + 中文一行，缩进收窄；不用 <ol> 避免 QText 有序列表内置缩进）
     extra = _extract_examples(html)
     if extra:
-        parts.append(f"<div class='seclabel'>EXAMPLE</div><div class='exlist'>")
+        parts.append("<div class='seclabel'>EXAMPLE</div><div class='exlist'>")
         for en, cn in extra[:10]:
             if en and cn:
                 parts.append(f"<div class='ex'><span class='exx'>{_esc(en)}</span><br>"
@@ -255,8 +254,8 @@ def _extract_examples(html: str) -> list:
     否则像 General American 这种会把词性/音标/释义/Culture 大段硬凑成一条超长
     “例句”，渲染成 EXAMPLE 下一大坨连续文字，非常难读）。
     """
-    import re
     import html as _h
+    import re
 
     out = []
     # 只认 class 值含 "examples" 的 <ul>；没有则 return []（不再退回整个 html 当 body）。
@@ -296,7 +295,8 @@ def _extract_examples(html: str) -> list:
 
 def _text_preserve_gloss(s: str):
     """去标签但保留 gloss/collocation 作为内联引注（换成引号内嵌）。"""
-    import re, html as _h
+    import html as _h
+    import re
     s = re.sub(r'<span\s+class=["\'][^"\']*\bgloss\b[^"\']*["\'][^>]*>(.*?)</span>',
                lambda m: " (" + _h.unescape(re.sub(r"<[^>]+>", "", m.group(1))) + ")",
                s, flags=re.I | re.S)
@@ -304,14 +304,16 @@ def _text_preserve_gloss(s: str):
 
 
 def _text_cn(s: str) -> str:
-    import re, html as _h
+    import html as _h
+    import re
     s = re.sub(r"<[^>]+>", "", s)
     return _h.unescape(re.sub(r"\s+", " ", s)).strip()
 
 
 def _strip_tags_except(s: str, keep: set):
     """去所有标签，但保留 keep 内标签的内容（如 gloss/cl 内联）。"""
-    import re, html as _h
+    import html as _h
+    import re
     def _repl(m):
         tag = m.group(0).lower()
         if any(k in tag for k in keep):

@@ -100,7 +100,8 @@ class _LzoBackend:
         # 2a. 先从应用旁/常见目录找显式的 dll（利于 exe 分发时附带）
         app_roots = []
         try:
-            import sys, os
+            import os
+            import sys
             if getattr(sys, "frozen", False):
                 app_roots.append(os.path.dirname(sys.executable))
             else:

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 轻量查词工具 - 入口。
 
@@ -16,18 +15,17 @@
   v0.1.6+ 词典索引构建放入独立子进程 (multiprocessing)，避免占用 GUI 主线程
           导致进度窗口白屏/未响应/被系统杀掉。
 """
+import multiprocessing as _mp
 import os
 import sys
 import traceback
-
-import multiprocessing as _mp
 
 # 确保能 import 项目内模块
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-from PySide6.QtCore import QObject, QTimer, Signal, Qt
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import QApplication
 
 from dictionary.searcher import Searcher
@@ -157,8 +155,10 @@ def maybe_backfill_summary(db_path: str):
 
     write_log("[browse] 词典库缺 summary 列 → 就地补全释义预览…")
     from PySide6.QtWidgets import (
-        QProgressDialog,
         QApplication as _QApp,
+    )
+    from PySide6.QtWidgets import (
+        QProgressDialog,
     )
 
     prog = QProgressDialog(
@@ -192,6 +192,7 @@ def maybe_backfill_summary(db_path: str):
 def _run_backfill(db_path, hook=None):
     """在调用线程内对 db 就地补全 summary 列，全程单连接，最后 conn 关闭。"""
     import sqlite3
+
     from dictionary.summary import extract_summary
 
     if not db_path or not os.path.exists(db_path):
@@ -408,7 +409,7 @@ def bootstrap(app, argv) -> int:
     try:
         window.show_window()
         write_log("[bootstrap] window shown")
-    except Exception as e:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         write_log("[bootstrap] window show FAILED:\n" + traceback.format_exc())
         return 1
 
@@ -423,7 +424,7 @@ def _setup_tray(app, window: SearchWindow, gh):
         window.show_window()
 
     try:
-        from PySide6.QtWidgets import QSystemTrayIcon, QMenu
+        from PySide6.QtWidgets import QMenu, QSystemTrayIcon
         app.setQuitOnLastWindowClosed(False)  # 关闭搜索框不退出进程
 
         tray = QSystemTrayIcon(app)

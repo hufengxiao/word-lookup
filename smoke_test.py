@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """GUI 冒烟测试（offscreen 模式，无真实显示）。"""
 import os
 import sys
@@ -16,9 +15,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 
-from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QTimer, Qt, QPoint, QPointF, QEvent
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QKeyEvent, QMouseEvent
+from PySide6.QtWidgets import QApplication
 
 from dictionary.searcher import Searcher
 from ui.search_window import SearchWindow
@@ -186,7 +185,7 @@ def main():
     _doc.setHtml(styled_html)
     _plain = _doc.toPlainText()
     assert "<" not in _plain, f"FAIL: 渲染后正文含未转义 '<' (标签文本泄漏): ...{_plain[:80]!r}"
-    step(f"dict_render 渲染健壮性: style 位置合规 ✓, 正文无标签泄漏 ✓")
+    step("dict_render 渲染健壮性: style 位置合规 ✓, 正文无标签泄漏 ✓")
 
     # 透明度测试（v0.7.0：改为 160ms 渐变，而非跳变）
     # 1) 失焦/移出 → 起动渐变，应能看到透明度下降（并非被卡死在 1.0）

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PySide6 GUI 入口。"""
 import os
 import sys

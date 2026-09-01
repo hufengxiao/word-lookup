@@ -87,10 +87,7 @@ class _Ext(HTMLParser):
             kind = "deft"
             self._deft += 1
         elif (tag == "h2" and "shcut" in cls) or (tag == "span" and "x" in cls) \
-                or tag in ("uncap", "pv", "v", "ir", "id", "xx"):
-            kind = "neg"
-            self._neg += 1
-        elif tag == "ul" and "examples" in cls:
+                or tag in ("uncap", "pv", "v", "ir", "id", "xx") or tag == "ul" and "examples" in cls:
             kind = "neg"
             self._neg += 1
         self._opened.append((tag.lower(), kind))

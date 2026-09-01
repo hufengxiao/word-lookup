@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """生成应用图标 WordLookup.ico / .png。"""
 from PIL import Image, ImageDraw
 
@@ -39,6 +38,7 @@ ico_sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 img.save("/root/oxford-lookup/assets/WordLookup.ico", sizes=[(s, s) for s in ico_sizes])
 print("saved icon.png + WordLookup.ico")
 import os
+
 for f in ["assets/icon.png", "assets/WordLookup.ico"]:
     p = os.path.join("/root/oxford-lookup", f)
     print(f, os.path.getsize(p), "bytes")

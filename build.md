@@ -33,7 +33,13 @@ pyinstaller --noconfirm --onefile --windowed ^
 
 **给用户的说明**：exe 同目录下会生成一个 `oxford.db`，是词典索引，变大属正常。
 
-## 方式 B：把已构建好的 oxford.db 打进 exe
+## 方式 B：把已构建好的 oxford.db 打进 exe （⚠️ 已废弃，不推荐）
+
+> **不推荐**。PyInstaller `--onefile` 会把 `--add-data` 的内容解包到临时目录
+> `sys._MEIPASS`，而 `main.py` 的 `_app_root()` 对 frozen 版只认 exe 所在目录，
+> 内置 db 需要额外读取逻辑才能生效，当前实现**读不到**。请改用「方式 A」
+> 或「精简做法」在 exe 旁放 `oxford.db`。若确需内嵌，需自行改动
+> `_app_root()/_db_path()` 同时考虑 `_MEIPASS`，此处不再展开。
 
 如果你希望开箱即用（内置你指定的词典），先把词典转好：
 
@@ -46,11 +52,7 @@ pyinstaller --noconfirm --onefile --windowed ^
   --add-data "dictionary;dictionary" ^
   main.py
 ```
-
-> 注意 `--add-data "oxford.db;."`：PyInstaller onefile 会把数据解包到临时目录
-> (`sys._MEIPASS`)。当前 `main.py` 中的 `_app_root()` 对 frozen 情况返回 exe
-> 所在目录，因此**内置的 db 需要额外逻辑**才能读到。为简单，推荐方式 A
-> （db 放 exe 旁边），或把方式 B 的 db 读取逻辑改为同时考虑 `_MEIPASS`。
+(注：`--add-data "oxford.db;."` 及 `_MEIPASS` 的读取缺陷见上方「已废弃」说明)
 
 ## 精简做法：exe + 旁边放 db
 

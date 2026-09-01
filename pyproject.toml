@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "word-lookup"
+version = "0.7.8"
+description = "高度仿 macOS Spotlight 的轻量查词工具 (MDX/EPUB 词典, Windows 全局热键)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "captshaw" }]
+keywords = ["dictionary", "dict", "mdx", "spotlight", "lookup", "PySide6"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: Microsoft :: Windows",
+    "License :: OSI Approved :: MIT License",
+    "Environment :: X11 Applications :: Qt",
+]
+dependencies = ["PySide6>=6.6"]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.0", "python-lzo"]
+dev = ["ruff>=0.4", "pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/hufengxiao/word-lookup"
+Repository = "https://github.com/hufengxiao/word-lookup"
+
+[tool.setuptools]
+packages = ["dictionary", "hotkey", "ui"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+# 务实选择：核心 E/F/B 必要 + I 导入排序 + UP 现代语法 + S110/未用变量等。
+# 有意保留的宽松项（防御性 UI/解析器的常见醒写法）显式 ignore：
+#   BLE001 盲捕异常, S110 空 try-except-pass, SIM115 open 不用 context, RUF059 未用拆包
+lint.select = ["E", "F", "I", "UP", "B", "SIM"]
+lint.ignore = [
+    "BLE001",   # 盲捕获 Exception 在此项目中多用于解析/UI 防御性兜底
+    "S110",     # try-except-pass 探测性划过
+    "SIM105",   # 用 contextlib.suppress 替代 try-except-pass —— 同上有意保留
+    "SIM115",   # open() 未用 with —— 部分为流式大文件
+    "E501",     # 行超长 —— 本项目在断言/长中英文注释里常见, 不强行折行
+    "E402",     # 模块顶部 import 非首行 —— smoke_test 需先设 QT_QPA_PLATFORM 再 import PySide6
+    "E702",     # 一行多语句(分号) —— 测试脚本常用简写
+    "SIM113",   # for 外自增计数(n += 1) 作进度计数 —— 语义清晰, 不强制 enumerate
+]
+
+[tool.ruff.lint.per-file-ignores]
+"ui/dict_render.py" = ["BLE001", "S110", "UP031"]
+"ui/search_window.py" = ["UP031"]
+"dictionary/*.py" = ["BLE001", "S110", "SIM115"]
+"main.py" = ["BLE001", "S110"]
+"hotkey/*.py" = ["S110"]
+"smoke_test.py" = ["BLE001", "S110"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

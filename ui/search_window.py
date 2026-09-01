@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Spotlight 风格的搜索主窗口。
 
 交互（对齐 macOS Spotlight）：
@@ -10,16 +9,28 @@
 背景用 QPainter 手绘（不依赖样式表 rgba 背景映射），确保卡片底色在
 Windows + 无边框置顶窗口下稳定可见。
 """
-from PySide6.QtCore import Qt, QTimer, QEvent, QRect, QSize, QPoint, QPointF
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QSize, Qt, QTimer
 from PySide6.QtGui import (
-    QFont, QPainter, QColor, QKeyEvent, QLinearGradient, QBrush, QCursor,
+    QBrush,
+    QColor,
+    QCursor,
+    QFont,
+    QKeyEvent,
+    QLinearGradient,
+    QPainter,
 )
 from PySide6.QtWidgets import (
-    QFrame, QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout, QHBoxLayout,
+    QFrame,
+    QHBoxLayout,
     QLabel,
-    QStyledItemDelegate, QTextBrowser,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QStyle,
+    QStyledItemDelegate,
+    QTextBrowser,
+    QVBoxLayout,
 )
-from PySide6.QtWidgets import QStyle
 
 from dictionary.searcher import Searcher
 
@@ -235,7 +246,6 @@ class SearchWindow(QFrame):
         top.addWidget(self._title, 1)
 
         # 底部拖动手柄（三条杠），也可直接拖；同时是一个可见的拖动把手
-        from PySide6.QtWidgets import QLabel
         self._drag_label = _DragHandle(self)
 
         top.addStretch(0)

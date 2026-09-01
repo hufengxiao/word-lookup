@@ -1,9 +1,13 @@
-# -*- coding: utf-8 -*-
 """词条详情窗口：渲染词典正文 HTML（轻量 QTextBrowser）。"""
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QCloseEvent, QKeyEvent
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout, QWidget,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
 )
 
 _DEFAULT_STYLE = """

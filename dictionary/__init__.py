@@ -1,2 +1,1 @@
-# -*- coding: utf-8 -*-
 """dictionary 包：MDX 解析、索引构建、查询。"""

@@ -8,7 +8,7 @@ import struct
 
 
 def f(j, x, y, z):
-    assert (0 <= j and j < 64)
+    assert (j >= 0 and j < 64)
     if j < 16:
         return x ^ y ^ z
     elif j < 32:
@@ -20,7 +20,7 @@ def f(j, x, y, z):
 
 
 def K(j):
-    assert (0 <= j and j < 64)
+    assert (j >= 0 and j < 64)
     if j < 16:
         return 0x00000000
     elif j < 32:
@@ -32,7 +32,7 @@ def K(j):
 
 
 def Kp(j):
-    assert (0 <= j and j < 64)
+    assert (j >= 0 and j < 64)
     if j < 16:
         return 0x50a28be6
     elif j < 32:

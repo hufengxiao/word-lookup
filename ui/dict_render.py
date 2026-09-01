@@ -271,9 +271,10 @@ def _extract_examples(html: str) -> list:
         if not en:
             # 退化为整个 li
             en = _text_preserve_gloss(li)
-        # 中文：<xT><chn>..</chn></xT> 或 <aT><chn>..</chn></aT>
+        # 中文：<xT><chn>..</chn></xT> / <aT><chn>..</chn></aT> / <oT><chn>..</chn></oT>
+        # (OALD10 例句翻译可能用 xT / aT / oT 三种容器, 都认)
         cn = ""
-        for m in re.finditer(r'<(xT|aT)>.*?<chn>(.*?)</chn>.*?</\1>', li, re.I | re.S):
+        for m in re.finditer(r'<(xT|aT|oT)>.*?<chn>(.*?)</chn>.*?</\1>', li, re.I | re.S):
             cn = _text_cn(m.group(2))
             if cn:
                 break

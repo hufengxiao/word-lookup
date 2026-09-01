@@ -114,6 +114,12 @@ def main():
     _en, _cn = ex_pairs[0]
     step(f"dict_render 例句拆分: 英文={_en[:18]!r} | 中文={_cn!r} (期望分开两行)")
 
+    # 例句中文: OALD10 例句翻译可能用 xT/aT/oT 三种容器, 都必须能提中文
+    ex_oT = _extract_examples("<ul class='examples'><li><span class='x'>IQs show a normal distribution.</span>"
+                              "<oT><chn><other>人口智商呈正态分布。</other></chn></oT></li></ul>")
+    assert ex_oT and ex_oT[0][1], "FAIL: oT 容器例句的中文未提取到(人口智商这种 oT 例句漏翻译)"
+    step(f"dict_render 例句中文 oT: {ex_oT[0][1]!r} ✓")
+
     # 例句健壮性: 没有 <ul class="examples"> 的词条(如 General American)必须返回空,
     # 绝不允许把整个词条正文(词性/音标/释义/Culture大段)硬凑成一条超长"例句"。
     no_ex_html = ("<h1 class='headword'>general american</h1>Noun /ˌdʒenrəl əˈmerɪkən/[uncountable] "

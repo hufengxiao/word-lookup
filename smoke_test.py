@@ -114,6 +114,16 @@ def main():
     _en, _cn = ex_pairs[0]
     step(f"dict_render 例句拆分: 英文={_en[:18]!r} | 中文={_cn!r} (期望分开两行)")
 
+    # 例句健壮性: 没有 <ul class="examples"> 的词条(如 General American)必须返回空,
+    # 绝不允许把整个词条正文(词性/音标/释义/Culture大段)硬凑成一条超长"例句"。
+    no_ex_html = ("<h1 class='headword'>general american</h1>Noun /ˌdʒenrəl əˈmerɪkən/[uncountable] "
+                  "Culture General American English General American English (GAE) is a term "
+                  "that describes the standard English used in most of the US, and it can "
+                  "be very long indeed but it is NOT an example sentence in any way. " * 3)
+    ex_no = _extract_examples(no_ex_html)
+    assert len(ex_no) == 0, f"FAIL: 无 examples 块的词条不应产生例句, 却得到 {len(ex_no)} 条(会把整词条当例句)"
+    step("dict_render 例句健壮性: 无 examples 块的词条返回空 ✓ (不再冒一大坨)")
+
     # 多词性健壮性: 喂一个含多词性(section)的真实结构, 应生成多个词性小节且不崩
     multi = ("<div id='entryContent'><div class='entry'><h1 class='headword'>run</h1>"
              "<span class='pos'>verb</span><ol class='sense_single'>"

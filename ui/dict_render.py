@@ -237,18 +237,24 @@ def _ph_html(phons):
 
 
 def _extract_examples(html: str) -> list:
-    """尽力提取例句，返回 [(英文, 中文), ...] 配对。
+    """从真实牛津 HTML 提取例句，返回 [(英文, 中文), ...] 配对。
 
-    真实牛津词典结构：<li><span class="x">英文(含cl/gloss)</span>
-    <xT><chn>中文</chn></xT></li>（部分用 <aT>/<unx>）。
-    解析失败则退化为整段文本，中文为空。
+    只认 <ul ... class*examples*...> 块内的 <li>。若整篇文档根本没有标准 examples
+    样例块，就返回空列表（不少词条并没有例句，绝不能把整个词条正文当作“例句”，
+    否则像 General American 这种会把词性/音标/释义/Culture 大段硬凑成一条超长
+    “例句”，渲染成 EXAMPLE 下一大坨连续文字，非常难读）。
     """
     import re
     import html as _h
 
     out = []
-    m = re.search(r'<ul\s+class="examples"[^>]*>(.*?)</ul>', html, re.I | re.S)
-    body = m.group(1) if m else html
+    # 只认 class 值含 "examples" 的 <ul>；没有则 return []（不再退回整个 html 当 body）。
+    m = re.search(
+        r"<ul\b[^>]*\bclass\s*=\s*[\"'][^\"']*examples[^\"']*[\"'][^>]*>(.*?)</ul>",
+        html, re.I | re.S)
+    if not m:
+        return []
+    body = m.group(1)
 
     def _text(s: str) -> str:
         s = re.sub(r"<[^>]+>", " ", s)

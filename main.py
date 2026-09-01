@@ -208,7 +208,9 @@ def maybe_backfill_summary(db_path: str):
 
     try:
         # 纯同步、单连接补全；每个批次后 pump 事件避免窗口假死
-        _run_backfill(db_path, hook=lambda t, c: _QApp.processEvents())
+        from dictionary.indexer import backfill_summary
+
+        backfill_summary(db_path, progress=lambda _p, _c: _QApp.processEvents())
         write_log("[bootstrap] summary backfill done")
     except Exception as e:  # noqa: BLE001
         write_log("[backfill] FAILED: " + traceback.format_exc())
@@ -221,42 +223,6 @@ def maybe_backfill_summary(db_path: str):
     finally:
         prog.close()
 
-
-def _run_backfill(db_path, hook=None):
-    """在调用线程内对 db 就地补全 summary 列，全程单连接，最后 conn 关闭。"""
-    import sqlite3
-
-    from dictionary.summary import extract_summary
-
-    if not db_path or not os.path.exists(db_path):
-        raise FileNotFoundError(db_path)
-    conn = sqlite3.connect(db_path, timeout=30)
-    try:
-        conn.execute("ALTER TABLE words ADD COLUMN summary TEXT NOT NULL DEFAULT ''")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # 列可能已存在
-    rows = conn.execute("SELECT id, html FROM words")
-    batch = []
-    done = 0
-    while True:
-        chunk = rows.fetchmany(2000)
-        if not chunk:
-            break
-        for rid, html in chunk:
-            s = extract_summary(html or "")
-            batch.append((s, rid))
-        conn.executemany("UPDATE words SET summary=? WHERE id=?", batch)
-        done += len(batch)
-        batch = []
-        if hook:
-            hook(done, None)
-    if batch:
-        conn.executemany("UPDATE words SET summary=? WHERE id=?", batch)
-        if hook:
-            hook(done + len(batch), None)
-    conn.commit()
-    conn.close()
 
 def build_from_mdx(mdx_path: str) -> str:
     """在子进程中把 .mdx 构建成 oxford.db。
@@ -533,6 +499,25 @@ class AppBridge(QObject):
         self._window.toggle()
 
 
+def _cli_version_flag() -> int:
+    """处理 `--version` / `-v` 参数, 返回进程退出码。
+
+    分级行为:
+      - 源码/有控制台语境(sys.stdout 不为 None): 直接打印版本, 立即返回 0。
+      - windowed exe(PyInstaller console=False, sys.stdout 为 None): 无法可靠打印到
+        父终端(经多版本实测), 故改用此前与托盘 About 统一的 Qt 模态弹窗显示版本。
+    说明: QMessageBox 的 parent 不能是 QApplication 实例(_show_about() 默认无 parent)。
+    """
+    if sys.stdout is not None:
+        print(f"Word Lookup {get_version()}")
+        return 0
+    import PySide6.QtWidgets as _w  # 延迟导入, 避免无 GUI 环境下 --version 依赖 Qt
+    app = _w.QApplication(sys.argv)   # 持引用支撑 dialog 事件循环
+    _show_about()
+    app.processEvents()               # 让 QT GUI 分支的事件队列完整跑完
+    return 0
+
+
 def main():
     # ---- CLI 便捷参数：--version / -v ----
     # 说明: PyInstaller --windowed(console=False) 的 exe 在 Windows 下不绑定控制台,
@@ -540,13 +525,7 @@ def main():
     # 显示版本号 —— 这是 GUI 程序的标准行为, 稳定、不闪黑框。日常看版本建议直接
     # 用托盘右键「关于 / 版本信息」(见 _setup_tray)。
     if any(a in ("--version", "-v") for a in sys.argv[1:]):
-        if sys.stdout is not None:               # 源码/有控制台语境: 直接打印
-            print(f"Word Lookup {get_version()}")
-            return 0
-        # windowed exe: Qt 模态弹窗显示版本（与托盘 About 统一）
-        app = QApplication(sys.argv)
-        _show_about()   # 无 parent —— QMessageBox 不接受 QApplication 作父对象
-        return 0
+        return _cli_version_flag()
 
     app = QApplication(sys.argv)
     app.setApplicationName("Word Lookup")

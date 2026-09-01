@@ -19,32 +19,22 @@ lzo1x_decompress 需要显式传入输出长度和缓冲区。两者等价。
 
 本模块对外统一暴露 `decompress(data: bytes, decompressed_size: int) -> bytes`。
 """
+import os
 import struct
+import sys
 import zlib
 
 
-def _decompress_ctypes(data_without_type_header, decompressed_size):
-    """用 ctypes 调 liblzo2 的 lzo1x_decompress 解压。
+def _decompress_ctypes(lib, data_without_type_header, decompressed_size):
+    """用已加载的 liblzo2 句柄(lib)调 lzo1x_decompress 解压。
 
+    lib 由 _LzoBackend 惰性加载并缓存, 避免每次解压重复 CDLL。
     参数 data_without_type_header 是去掉前 8 字节 (type+adler) 后的压缩数据。
     """
     import ctypes
 
-    # 缓存库句柄
-    _lib = None
-    for name in ("liblzo2.so.2", "liblzo2.so.1", "liblzo2.2.dylib", "liblzo2.dll"):
-        try:
-            _lib = ctypes.CDLL(name)
-            break
-        except OSError:
-            continue
-    if _lib is None:
-        raise RuntimeError(
-            "未找到 liblzo2 动态库，请安装 liblzo2 或 python-lzo (pip install python-lzo)"
-        )
-
-    _lib.lzo1x_decompress.restype = ctypes.c_int
-    _lib.lzo1x_decompress.argtypes = [
+    lib.lzo1x_decompress.restype = ctypes.c_int
+    lib.lzo1x_decompress.argtypes = [
         ctypes.c_char_p,
         ctypes.c_size_t,
         ctypes.c_char_p,
@@ -55,7 +45,7 @@ def _decompress_ctypes(data_without_type_header, decompressed_size):
     in_len = len(data_without_type_header)
     out_buf = ctypes.create_string_buffer(max(decompressed_size, 1))
     out_len = ctypes.c_size_t(decompressed_size)
-    rc = _lib.lzo1x_decompress(
+    rc = lib.lzo1x_decompress(
         data_without_type_header,
         in_len,
         out_buf,
@@ -77,31 +67,30 @@ def _decompress_pylzo(data_without_type_header, decompressed_size):
 
 
 class _LzoBackend:
-    """惰性选择可用的 LZO 后端。"""
+    """惰性选择可用的 LZO 后端; 选中后缓存句柄, 避免对百万词条重复 CDLL。
+
+    仅在首次解压时做一次探测; 之后 `decompress` 走缓存路径。
+    """
 
     def __init__(self):
-        self._module = None
-        self._mode = None
+        self._mode = None      # 可选 'pylzo' | 'ctypes'
+        self._ctypes_lib = None
 
     def _resolve(self):
         if self._mode is not None:
             return self._mode
+        import ctypes
         # 1. 尝试 python-lzo
         try:
             import lzo  # noqa: F401
-
             self._mode = "pylzo"
             return self._mode
         except ImportError:
             pass
         # 2. 尝试 ctypes 调系统库
-        import ctypes
-
         # 2a. 先从应用旁/常见目录找显式的 dll（利于 exe 分发时附带）
         app_roots = []
         try:
-            import os
-            import sys
             if getattr(sys, "frozen", False):
                 app_roots.append(os.path.dirname(sys.executable))
             else:
@@ -112,16 +101,15 @@ class _LzoBackend:
             cand = os.path.join(root, "liblzo2.dll")
             if os.path.exists(cand):
                 try:
-                    ctypes.CDLL(cand)
+                    self._ctypes_lib = ctypes.CDLL(cand)
                     self._mode = "ctypes"
                     return self._mode
                 except OSError:
                     pass
-
         # 2b. 系统路径 / PATH
         for name in ("liblzo2.so.2", "liblzo2.so.1", "liblzo2.2.dylib", "liblzo2.dll"):
             try:
-                ctypes.CDLL(name)
+                self._ctypes_lib = ctypes.CDLL(name)
                 self._mode = "ctypes"
                 return self._mode
             except OSError:
@@ -133,7 +121,7 @@ class _LzoBackend:
     def decompress(self, data, decompressed_size):
         mode = self._resolve()
         if mode == "ctypes":
-            return _decompress_ctypes(data, decompressed_size)
+            return _decompress_ctypes(self._ctypes_lib, data, decompressed_size)
         return _decompress_pylzo(data, decompressed_size)
 
 

@@ -55,8 +55,7 @@ class MDX:
     >>> mdx = MDX('oxford.mdx')
     >>> len(mdx)
     156381
-    >>> keys = mdx.keys()
-    >>> html = mdx.lookup(b'apple')
+    >>> mdx.names = [k.decode('utf-8','replace') for k in mdx.keys()]
     """
 
     def __init__(self, fname: str, encoding: str = ""):
@@ -317,54 +316,3 @@ class MDX:
     def keys(self):
         """返回词条名迭代器（utf-8 bytes）。"""
         return (key for _key_id, key in self._key_list)
-
-    def key_texts(self):
-        """返回所有词条名（str 列表）。"""
-        return [k.decode("utf-8", "replace") for _id, k in self._key_list]
-
-    def build_lookup_table(self):
-        """构建 key_id -> key_text 索引与 key_text -> key_id 查找表。
-
-        返回值 (text_list, id_by_text)：
-          - text_list: 排好序的 key 文本列表（str），下标即 key_id
-          - id_by_text: {key_text_lower: key_id}
-        排序基于小写形式，支持不区分大小写的快速定位。
-        """
-        pairs = []
-        for key_id, key_text in self._key_list:
-            text = key_text.decode("utf-8", "replace")
-            pairs.append((key_id, text))
-        pairs.sort(key=lambda p: p[1].lower())
-        text_list = [t for _id, t in pairs]
-        id_by_text = {}
-        for key_id, text in self._key_list:
-            id_by_text[text.lower()] = key_id
-        return text_list, id_by_text
-
-    def lookup(self, key_text):
-        """精确查找一个词条的 HTML（返回 HTML 字节串；不存在返回 None）。
-
-        key_text: str 或 bytes，大小写不敏感。
-        """
-        if isinstance(key_text, str):
-            key_text = key_text.encode("utf-8")
-        target = key_text.lower()
-        for _kid, ktext in self._key_list:
-            if ktext.lower() == target:
-                # 找到词条，直接进入 record block 迭代，取到即返回
-                for kt, html in self._iter_record_blocks():
-                    if kt == ktext:
-                        return html
-                return None
-        return None
-
-    def get_all(self):
-        """返回 [(key_str, html_bytes)] 完整列表（大词典耗时较长，慎用）。"""
-        return [
-            (k.decode("utf-8", "replace"), h)
-            for k, h in self._iter_record_blocks()
-        ]
-
-    def get_by_key_id(self, key_id, html):
-        """供一次性导入时用：key_id 与正文对应。"""
-        return html

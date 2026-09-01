@@ -13,7 +13,7 @@ authors = [{ name = "captshaw" }]
 keywords = ["dictionary", "dict", "mdx", "spotlight", "lookup", "PySide6"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Operating System :: Microsoft :: Windows",
+    "Operating System :: OS Independent",
     "License :: OSI Approved :: MIT License",
     "Environment :: X11 Applications :: Qt",
 ]

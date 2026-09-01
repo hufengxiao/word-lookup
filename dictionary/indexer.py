@@ -122,11 +122,18 @@ def has_summary_col(db_path: str) -> bool:
         return False
 
 
-def backfill_summary(db_path: str, batch_size: int = 4000):
+def backfill_summary(db_path: str, batch_size: int = 4000, progress=None):
     """为一次构建的老 db 就地补 summary 列(基于已存储 html, 无需 mdx)。
 
-    返回 (changed, filled)：changed=True 表示加了列并回填；filled 为实际条数。
-    进程内同步执行(会占用调用线程)，适合放入子进程跑。
+    Args:
+        db_path: 词典 sqlite 路径。
+        batch_size: 每批 UPDATE 的条数。
+        progress: 可选回调, 每完成一批调用 progress(processed_count, total)。
+                  GUI 主线程可用它 pump 事件保持窗口响应。
+
+    Returns (changed, filled)：changed=True 表示加了列并回填；filled 为实际条数。
+
+    进程内同步执行(会占用调用线程), 适合放入子进程跑。
     """
     import sqlite3
 
@@ -134,22 +141,36 @@ def backfill_summary(db_path: str, batch_size: int = 4000):
         return False, 0
     from .summary import extract_summary
 
-    conn = sqlite3.connect(db_path)
-    conn.execute("ALTER TABLE words ADD COLUMN summary TEXT NOT NULL DEFAULT ''")
-    conn.commit()
-    cur = conn.execute("SELECT id, html FROM words")  # html 可能缺
+    conn = sqlite3.connect(db_path, timeout=30)
+    try:
+        conn.execute("ALTER TABLE words ADD COLUMN summary TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # 列可能在并发连接中已被添加; 幂等
+
+    cur = conn.execute("SELECT id, html FROM words")
     rows = []
     filled = 0
-    for rid, html in cur:
-        s = extract_summary(html or "")
-        if s:
-            filled += 1
-        rows.append((s, rid))
-        if len(rows) >= batch_size:
-            conn.executemany("UPDATE words SET summary=? WHERE id=?", rows)
-            rows = []
+    processed = 0
+    while True:
+        chunk = cur.fetchmany(batch_size)
+        if not chunk:
+            break
+        for rid, html in chunk:
+            s = extract_summary(html or "")
+            if s:
+                filled += 1
+            rows.append((s, rid))
+        conn.executemany("UPDATE words SET summary=? WHERE id=?", rows)
+        processed += len(rows)
+        rows = []
+        if progress:
+            progress(processed, None)
     if rows:
         conn.executemany("UPDATE words SET summary=? WHERE id=?", rows)
+        processed += len(rows)
+        if progress:
+            progress(processed, None)
     conn.commit()
     conn.close()
     return True, filled

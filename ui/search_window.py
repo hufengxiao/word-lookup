@@ -291,6 +291,7 @@ class SearchWindow(QFrame):
         self._drag_offset = None
         self._expanded = False
         self._last_query = ""
+        self._last_rows = None   # 上次渲染的结果缓存，用于跳过重复重建
         # 透明度渐变状态
         self._fade_timer = QTimer(self)
         self._fade_timer.setInterval(FADE_STEP)
@@ -590,6 +591,11 @@ class SearchWindow(QFrame):
         if cur != q:  # 输入已变化，丢弃过期结果
             return
         self._last_query = q
+        if tuple(rows) == getattr(self, "_last_rows", None):
+            # 结果与上次完全相同(如回退到已显示过的前缀), 跳过重建,
+            # 避免无谓的 clear+addItem 清掉用户当前的选中/滚动位置。
+            return
+        self._last_rows = tuple(rows)
         self._list.clear()
         if not rows:
             self._expand()

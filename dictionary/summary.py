@@ -14,11 +14,12 @@ _POS_ABBR = {
     "suffix": "suf", "prepositionoradverb": "prep/adv",
     "combiningform": "comb", "phrase": "phr",
 }
-_ALIAS = {n: v for v, n in {
-    "n": "noun", "v": "verb", "adj": "adjective", "adv": "adverb",
-    "prep": "preposition", "conj": "conjunction", "pron": "pronoun",
-    "det": "determiner", "num": "numeral", "int": "exclamation",
-}.items()}
+# 缩写别名 → 规范名（例：输入 "n."/"n" 归一为 "noun"，使后续 _POS_ABBR.get 可持续映射）。
+# 注意构造方向：{缩写: 规范名}。旧版误写成 {规范名: 缩写}，导致单字母缩写词性
+# (n/v/adj...) 无法归一 —— 该 bug 长期被掩盖（牛津 class 通常已是完整名 noun/verb）。
+_ALIAS = {"n": "noun", "v": "verb", "adj": "adjective", "adv": "adverb",
+          "prep": "preposition", "conj": "conjunction", "pron": "pronoun",
+          "det": "determiner", "num": "numeral", "int": "exclamation"}
 _MAX_PER_POS = 1   # 每词性取最新一条释义（保持简介、避免例句/衍生词污染）
 _MAX_GROUPS = 3
 _MAX_CHARS = 115
@@ -28,14 +29,18 @@ def _norm_pos(raw):
     s = "".join(ch for ch in raw.lower() if ch.isalpha())
     if not s:
         return ""
-    if s in _POS_ABBR:
+    if s in _POS_ABBR:      # 完整规范名 noun/verb/...
         return s
-    if s in _ALIAS:
+    if s in _ALIAS:         # 缩写别名 n/v/adj/...
         return _ALIAS[s]
+    # 兜底: 输入可能是带额外后缀/拼写变体(如 "nouns"/"adverbial")。
+    # 只接受"前缀是某个完整规范词性名"的情况, 并且取最长匹配, 避免短规范词
+    # (如 "nounn" 与 "noun") 命中顺序不定造成歧义(长按优先, 确定性)。
+    best = ""
     for canon in _POS_ABBR:
-        if s.startswith(canon):
-            return canon
-    return ""
+        if s.startswith(canon) and len(canon) > len(best):
+            best = canon
+    return best
 
 
 def _short_chn(raw):

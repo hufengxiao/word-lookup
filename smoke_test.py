@@ -157,6 +157,21 @@ def main():
     if n_pos < 2:
         raise RuntimeError("FAIL: 多词性词条渲染未生成多个词性小节")
 
+    # 子义项小标题 <h2 class="shcut">(<shcutT><chn>中文</chn></shcutT>) 是词条内的
+    # 小节标签(如 run 的 manage 管理 / provide 提供), 不是一条独立释义; 其中文若被当作
+    # 定义中文, 会污染到上一条释义的中文行(渲染成 "管理；经营管理" 这类杂字)。必须整块跳过。
+    shcut_html = ("<div id='x'><span class='def'>to be in charge</span><defT><chn>管理；经营</chn></defT>"
+                  "<h2 class='shcut'>manage<shcutT><chn>管理</chn></shcutT></h2>"
+                  "<span class='def'>to provide</span><defT><chn>提供</chn></defT></div>")
+    sout = convert_dict_html(shcut_html)
+    from PySide6.QtGui import QTextDocument
+    _doc = QTextDocument(); _doc.setHtml(sout); _txt = _doc.toPlainText()
+    assert "管理；经营 提供" not in _txt.replace("\n", " "), \
+        f"FAIL: shcut 小标题污染了释义中文行 → {_txt!r}"
+    assert "管理；经营\n提供" in _txt or "提供" in _txt.split("管理；经营")[1], \
+        f"FAIL: shcut 修复后中文释义缺失 → {_txt!r}"
+    step("dict_render 子义项(shcut)小标题不污染释义中文 ✓")
+
     # 渲染健壮性回归: <style> 必须位于 <head> 内, 否则 QTextDocument 会把 style 的
     # CSS 声明(div.word{...} 等)当作正文文本渲染 → 用户看到"例句区域出现很多 div 字样"。
     # 同时验证渲染结果经 QTextDocument 解析后纯文本不含裸 '<' (无未转义标签文本泄漏)。

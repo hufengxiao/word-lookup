@@ -76,6 +76,12 @@ class DictHtmlParser(HTMLParser):
             self._ex_depth += 1
         if tag == "li" and self._cls_has(attrs, "sense"):
             self._senses_sep = True
+        # 子义项小标题 <h2 class="shcut">（如 manage 管理 / provide 提供 / liquid 液体）
+        # 整棵子树(含内层 <shcutT><chn>中文</chn>)都不是一条独立释义, 必须整块跳过,
+        # 否则其中文 <chn> 会被当成“定义中文”并污染到上一条/下一条释义的中文行。
+        if tag == "h2" and "shcut" in self._class(attrs).split():
+            self._shcut_skip = getattr(self, "_shcut_skip", 0) + 1
+            return
         sem = self._sem_of(tag, attrs)
         self._tag_stack.append((tag.lower(), sem))
 
@@ -87,6 +93,9 @@ class DictHtmlParser(HTMLParser):
             self._tag_stack.append((tag.lower(), sem))
 
     def handle_endtag(self, tag):
+        if tag == "h2" and getattr(self, "_shcut_skip", 0):
+            self._shcut_skip -= 1
+            return
         if self._skip:
             if tag in ("script", "style", "audio"):
                 self._skip -= 1
@@ -100,7 +109,7 @@ class DictHtmlParser(HTMLParser):
                 break
 
     def handle_data(self, data):
-        if self._skip or self._ex_depth or not self._tag_stack:
+        if self._skip or self._ex_depth or getattr(self, "_shcut_skip", 0) or not self._tag_stack:
             return
         sem = None
         for _t, s in reversed(self._tag_stack):

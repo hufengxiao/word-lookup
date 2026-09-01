@@ -22,7 +22,7 @@ import sys
 import traceback
 
 # 与 GitHub tag / pyproject.toml 保持同步。
-__version__ = "0.7.9"
+__version__ = "0.7.11"
 
 # 确保能 import 项目内模块
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -483,16 +483,52 @@ class AppBridge(QObject):
 
 
 # ----------------------------------------------------------------------------
+def _attach_parent_console():
+    """让 windowed (console=False) exe 在父终端里也能打印。
+
+    PyInstaller --windowed 不绑定控制台，sys.stdout 是 None。这在运行命令
+    行的父进程(PowerShell/Windows Terminal/cmd)时格外想在终端打印版本号。
+    Win32 AttachConsole(ATTACH_PARENT_PROCESS) 把我们的 标准输出 接到父终端，
+    再把 sys.stdout/stderr 重定向到控制台句柄，即可即时 print。
+    """
+    try:
+        import ctypes
+    except Exception:
+        return False
+    kd = ctypes.windll.kernel32
+    ATTACH_PARENT_PROCESS = -1
+    # 没有可附加的父控制台(如双击启动)且自身也无控制台 → 无法终端打印
+    if not kd.AttachConsole(ATTACH_PARENT_PROCESS) and not kd.AllocConsole():
+        return False
+    # 将 C 运行时的 STD_OUTPUT/ERR 句柄重定向到新附加/分配的控制台
+    try:
+        sys.stdout = open("CONOUT$", "w", encoding="utf-8", newline="")
+    except Exception:
+        pass
+    try:
+        sys.stderr = open("CONOUT$", "w", encoding="utf-8", newline="")
+    except Exception:
+        pass
+    return True
+
+
 def main():
     # ---- CLI 便捷参数：--version / -v ----
-    # windowed exe 无控制台(sys.stdout is None): 内存中无法 print 出来，
-    # 于是有控制台时 print，无控制台时用 Qt 弹窗显示版本号。
+    # 优先真实终端打印；windowed exe 无 stdout 时先 AttachConsole 接回父终端，
+    # 仍无可打印的控制台(如双击启动)才退化为 Qt 弹窗。
     if any(a in ("--version", "-v") for a in sys.argv[1:]):
-        if sys.stdout is not None:
+        printed = False
+        # 两条 if 分支 print 相同但 elif 分支有副作用(必须先 AttachConsole)，
+        # 不能用 or 合并(会短路丢控制台附加)。
+        if sys.stdout is not None:          # noqa: SIM114 源码运行 / console 语境
             print(f"Word Lookup {__version__}")
+            printed = True
+        elif _attach_parent_console():      # windowed exe 在终端里运行
+            print(f"Word Lookup {__version__}")
+            printed = True
+        if printed:
             return 0
-        # windowed exe 无控制台：用 Qt 弹窗。注意局部只 import QMessageBox，
-        # 避免再次 import QApplication 遮蔽主函数里的全局同名绑定(见顶部 import)。
+        # 兜底：连控制台都无法附加(台风双击) → Qt 弹窗
         from PySide6.QtWidgets import QMessageBox
         app = QApplication(sys.argv)
         QMessageBox.information(

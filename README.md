@@ -1,5 +1,9 @@
 # Oxford Lookup · 轻量查词工具
 
+[![Build](https://github.com/hufengxiao/word-lookup/actions/workflows/build.yml/badge.svg)](https://github.com/hufengxiao/word-lookup/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/hufengxiao/word-lookup?sort=semver&color=blue)](https://github.com/hufengxiao/word-lookup/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 一个像 macOS **Spotlight** 一样即按即查的悬浮查词工具，专为 Windows 设计。
 
 按 **Ctrl + Shift + M** 唤起搜索框 → 输入英文单词即时联想 → **回车** 打开词条详情。窗口保持置顶，失焦自动变「近乎透明」，鼠标移入即恢复——不打扰你的其它工作。

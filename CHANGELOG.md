@@ -3,6 +3,11 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.7.17] - 2026-09-01
+
+### 修复
+- **修复 v0.7.16 回归**：`--version`/`-v` 弹窗崩溃。统一 About 对话框时误把 `QApplication` 实例当作父对象传给 `QMessageBox`（Qt 不接受非 QWidget 的父对象），导致报错。现改为无父窗口的顶层弹窗；托盘「关于/版本信息」不受影响。
+
 ## [v0.7.16] - 2026-09-01
 
 ### 重构

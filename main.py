@@ -545,7 +545,7 @@ def main():
             return 0
         # windowed exe: Qt 模态弹窗显示版本（与托盘 About 统一）
         app = QApplication(sys.argv)
-        _show_about(app)
+        _show_about()   # 无 parent —— QMessageBox 不接受 QApplication 作父对象
         return 0
 
     app = QApplication(sys.argv)

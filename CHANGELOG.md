@@ -3,6 +3,12 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.7.13] - 2026-09-01
+
+### 修复
+- **根治版本号错位**：版本改为**单一来源**——CI 在发布打包时把 git tag 版本注入 `version.txt`（随 exe 打包），程序启动读取该文件。从此 exe 报告版本 = 该次发布 tag，彻底告别"下载 v0.7.11 却显示 v0.7.9"。
+- **`--version` 不再闪黑框/不弹慢窗**：优先直接打印到父终端（`AttachConsole` 接回 PowerShell/Windows Terminal/cmd）；仅当确实无法附加终端（如双击运行）才走 Qt 模态弹窗。移除了旧的 `AllocConsole`（会凭空弹出一闪而过的黑框）。
+
 ## [v0.7.12] - 2026-09-01
 
 ### 修复

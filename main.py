@@ -2,7 +2,8 @@
 轻量查词工具 - 入口。
 
 用法:
-    python main.py [oxford.db]
+    python main.py [oxford.db]   # 启动查词工具
+    python main.py --version     # 打印版本号
 
 功能:
     - Ctrl+Shift+M 唤起/隐藏搜索窗 (Windows 全局热键)
@@ -19,6 +20,9 @@ import multiprocessing as _mp
 import os
 import sys
 import traceback
+
+# 与 GitHub tag / pyproject.toml 保持同步。
+__version__ = "0.7.9"
 
 # 确保能 import 项目内模块
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -480,6 +484,11 @@ class AppBridge(QObject):
 
 # ----------------------------------------------------------------------------
 def main():
+    # ---- CLI 便捷参数：--version / -v 打印版本后退出（无需创建 GUI）----
+    if any(a in ("--version", "-v") for a in sys.argv[1:]):
+        print(f"Word Lookup {__version__}")
+        return 0
+
     app = QApplication(sys.argv)
     app.setApplicationName("Word Lookup")
     write_log("[startup] QApplication ready")

@@ -73,6 +73,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller python-lzo
+      - name: Inject release version (single source of truth)
+        shell: pwsh
+        run: |
+          # 把 git 发布 tag 版本号(v0.7.x → 0.7.x)写入 version.txt，
+          # PyInstaller 会随 exe --add-data 打包；main.py 的 get_version()
+          # 启动时读它 → exe 报告版本永远等于本次发布 tag(根治版本错位)。
+          $tag = "${{ github.ref_name }}"
+          if ($tag -eq '' -or $tag -eq 'main') { $tag = '0.0.0-local' }
+          $ver = $tag -replace '^v', ''
+          Set-Content -Path version.txt -Value $ver -NoNewline -Encoding ascii
+          Write-Host "injected version: $ver"
       - name: Build exe (PyInstaller)
         run: pyinstaller --noconfirm wordlookup.spec
       - name: List artifacts

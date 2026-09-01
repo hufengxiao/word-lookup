@@ -21,8 +21,37 @@ import os
 import sys
 import traceback
 
-# 与 GitHub tag / pyproject.toml 保持同步。
-__version__ = "0.7.12"
+# 源码运行/未打包时的回落版本号（发布 exe 的版本号由打包内 version.txt 指定，
+# 由 CI 从 git tag 注入，见 build.yml —— 单一来源彻底根治版本错位）。
+__version__ = "0.7.12DEV"
+
+
+def get_version() -> str:
+    """返回应用版本号。
+
+    单一来源 <-> 打包内嵌 version.txt (CI 从 git 发布 tag 写入, 随 exe --add-data 打包)。
+    读取优先级:
+      1) 打包内嵌文件 (frozen): sys._MEIPASS/version.txt
+      2) 源码旁边的 version.txt
+      3) 代码内 __version__ 回落
+    这样任一发布的 exe 报告版本永远等于该次发布的 git tag。
+    """
+    candidates = []
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", "")
+        if meipass:
+            candidates.append(os.path.join(meipass, "version.txt"))
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates.append(os.path.join(here, "version.txt"))
+    for p in candidates:
+        try:
+            with open(p, encoding="utf-8") as fh:
+                v = fh.read().strip()
+            if v:
+                return v
+        except OSError:
+            continue
+    return __version__
 
 # 确保能 import 项目内模块
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -483,57 +512,62 @@ class AppBridge(QObject):
 
 
 # ----------------------------------------------------------------------------
-def _attach_parent_console():
-    """让 windowed (console=False) exe 在父终端里也能打印。
+def _print_version_to_parent_console() -> bool:
+    """尽量在启动本 exe 的父终端(PowerShell/Windows Terminal/cmd)打印一行。
 
-    PyInstaller --windowed 不绑定控制台，sys.stdout 是 None。这在运行命令
-    行的父进程(PowerShell/Windows Terminal/cmd)时格外想在终端打印版本号。
-    Win32 AttachConsole(ATTACH_PARENT_PROCESS) 把我们的 标准输出 接到父终端，
-    再把 sys.stdout/stderr 重定向到控制台句柄，即可即时 print。
+    PyInstaller --windowed 的 exe 默认不绑定控制台，sys.stdout 为 None，直接
+    print 无处可去。这里用 Win32 AttachConsole(ATTACH_PARENT_PROCESS) 把自己
+    接到父进程的终端，再把标准输出指向该终端的 CONOUT$ 句柄即可即时打印。
+
+    注意: 绝不用 AllocConsole() 兜底 —— 那会凭空弹出一个一闪而过的黑框
+    (用户已碰到)。附加失败就返回 False, 由调用方改用 Qt 模态弹窗。
+
+    返回 True 表示已成功在父终端打印。
     """
     try:
         import ctypes
     except Exception:
         return False
     kd = ctypes.windll.kernel32
-    ATTACH_PARENT_PROCESS = -1
-    # 没有可附加的父控制台(如双击启动)且自身也无控制台 → 无法终端打印
-    if not kd.AttachConsole(ATTACH_PARENT_PROCESS) and not kd.AllocConsole():
+    if not kd.GetConsoleWindow():                 # 自身无控制台(PyInstaller windowed)
+        kd.FreeConsole()                          # 排除残留绑定
+        if not kd.AttachConsole(-1):             # ATTACH_PARENT_PROCESS
+            return False                         # 没有可附加的父终端
+    try:
+        stdout_fd = kd.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        if not stdout_fd or stdout_fd == -1:
+            return False
+        import io
+        sys.stdout = io.TextIOWrapper(
+            io.FileIO(stdout_fd, "w"), encoding="utf-8", newline="")
+    except Exception:
         return False
-    # 将 C 运行时的 STD_OUTPUT/ERR 句柄重定向到新附加/分配的控制台
     try:
-        sys.stdout = open("CONOUT$", "w", encoding="utf-8", newline="")
+        print(f"Word Lookup {get_version()}")
+        sys.stdout.flush()
     except Exception:
-        pass
-    try:
-        sys.stderr = open("CONOUT$", "w", encoding="utf-8", newline="")
-    except Exception:
-        pass
+        return False
     return True
 
 
 def main():
     # ---- CLI 便捷参数：--version / -v ----
-    # 优先真实终端打印；windowed exe 无 stdout 时先 AttachConsole 接回父终端，
-    # 仍无可打印的控制台(如双击启动)才退化为 Qt 弹窗。
     if any(a in ("--version", "-v") for a in sys.argv[1:]):
-        printed = False
-        # 两条 if 分支 print 相同但 elif 分支有副作用(必须先 AttachConsole)，
-        # 不能用 or 合并(会短路丢控制台附加)。
-        if sys.stdout is not None:          # noqa: SIM114 源码运行 / console 语境
-            print(f"Word Lookup {__version__}")
-            printed = True
-        elif _attach_parent_console():      # windowed exe 在终端里运行
-            print(f"Word Lookup {__version__}")
-            printed = True
-        if printed:
+        ok = False
+        if sys.stdout is not None:               # 有控制台语境(源码 run/调试)
+            print(f"Word Lookup {get_version()}")
+            ok = True
+        elif _print_version_to_parent_console():  # windowed 但在终端里启动
+            ok = True
+        if ok:
             return 0
-        # 兜底：连控制台都无法附加(台风双击) → Qt 弹窗
+        # 兜底：无法在终端打印(如双击启动) → Qt 模态框 (会阻塞直到用户点掉)
+        # 局部只 import QMessageBox，绝不重复 import QApplication(避免遮蔽全局)。
         from PySide6.QtWidgets import QMessageBox
         app = QApplication(sys.argv)
         QMessageBox.information(
             None, "Word Lookup",
-            f"Word Lookup\n版本 {__version__}\n更新见 GitHub hufengxiao/word-lookup",
+            f"Word Lookup\n版本 {get_version()}\n更新见 GitHub hufengxiao/word-lookup",
         )
         return 0
 

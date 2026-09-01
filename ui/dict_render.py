@@ -171,7 +171,7 @@ def convert_dict_html(html: str) -> str:
     # 过滤既无词性也无释义的空词块(牛津里偶有空 <div class=entry>)
     entries = [e for e in entries if e["defs"] or e["pos"]]
 
-    parts = [_HEADER, "<html><head><meta charset='utf-8'></head><body>", _STYLE]
+    parts = [_HEADER, "<html><head><meta charset='utf-8'>\n", _STYLE, "\n</head><body>"]
 
     # ---------- 宿主大标题 ----------
     parts.append(f"<div class='word'>{_esc(head_disp)}</div>")
@@ -264,7 +264,7 @@ def _extract_examples(html: str) -> list:
                 break
         if not en:
             # 退化为整个 li
-            en = _strip_tags_except(li, {"gloss", "cl"})
+            en = _text_preserve_gloss(li)
         # 中文：<xT><chn>..</chn></xT> 或 <aT><chn>..</chn></aT>
         cn = ""
         for m in re.finditer(r'<(xT|aT)>.*?<chn>(.*?)</chn>.*?</\1>', li, re.I | re.S):

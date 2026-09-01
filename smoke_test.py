@@ -129,6 +129,22 @@ def main():
     if n_pos < 2:
         raise RuntimeError("FAIL: 多词性词条渲染未生成多个词性小节")
 
+    # 渲染健壮性回归: <style> 必须位于 <head> 内, 否则 QTextDocument 会把 style 的
+    # CSS 声明(div.word{...} 等)当作正文文本渲染 → 用户看到"例句区域出现很多 div 字样"。
+    # 同时验证渲染结果经 QTextDocument 解析后纯文本不含裸 '<' (无未转义标签文本泄漏)。
+    styled_html = convert_dict_html(raw)
+    if "<style>" in styled_html:
+        head_part = styled_html[:styled_html.find("</head>")] if "</head>" in styled_html else ""
+        tail = styled_html.find("<body>")
+        body_part = styled_html[tail:] if tail >= 0 else styled_html
+        assert "<style>" in head_part, "FAIL: <style> 未位于 <head> 内(会在正文显示 CSS 文本)"
+        assert "<style>" not in body_part, "FAIL: <style> 残留于 <body> 内"
+    _doc = win._detail_view.document()
+    _doc.setHtml(styled_html)
+    _plain = _doc.toPlainText()
+    assert "<" not in _plain, f"FAIL: 渲染后正文含未转义 '<' (标签文本泄漏): ...{_plain[:80]!r}"
+    step(f"dict_render 渲染健壮性: style 位置合规 ✓, 正文无标签泄漏 ✓")
+
     # 透明度测试（v0.7.0：改为 160ms 渐变，而非跳变）
     # 1) 失焦/移出 → 起动渐变，应能看到透明度下降（并非被卡死在 1.0）
     win.setWindowOpacity(1.0)

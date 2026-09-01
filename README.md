@@ -85,4 +85,4 @@ pyinstaller --noconfirm --onefile --windowed \
 
 代码采用 MIT 协议。**KG：词典文件 (.mdx) 属于其版权所有者**，不在本仓库内；请使用你自己的正版词典文件。
 
-内置解析逻辑参考了开源 [readmdict](https://github.com/ffreemt/readmdict)（GPL-3.0），已将 LZO 解压和算法内嵌于本项目。
+内置解析逻辑参考了开源 [readmdict](https://github.com/ffreemt/readmdict)。其本仓库未附带明确的许可证文件，原始 readmdict 项目沿用的是 GPL-3.0，故本项目引用该算法时以其实际采用的许可证为准；LZO 解压与解析算法逻辑已内嵌于本项目。

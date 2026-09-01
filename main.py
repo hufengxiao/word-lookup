@@ -22,7 +22,7 @@ import sys
 import traceback
 
 # 与 GitHub tag / pyproject.toml 保持同步。
-__version__ = "0.7.11"
+__version__ = "0.7.12"
 
 # 确保能 import 项目内模块
 _HERE = os.path.dirname(os.path.abspath(__file__))

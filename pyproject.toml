@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "word-lookup"
-version = "0.7.11"
+version = "0.7.12"
 description = "高度仿 macOS Spotlight 的轻量查词工具 (MDX/EPUB 词典, Windows 全局热键)"
 readme = "README.md"
 requires-python = ">=3.10"

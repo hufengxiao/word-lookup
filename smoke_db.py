@@ -14,6 +14,7 @@ WORDS = [("apple", "apple", "<p>apple</p>"),
 
 def make_db(path: str) -> None:
     con = sqlite3.connect(path)
+    con.execute("DROP TABLE IF EXISTS words")  # 幂等：删除旧表后重建
     con.execute("CREATE TABLE words (id INTEGER PRIMARY KEY, "
                 "key TEXT, key_lower TEXT, html TEXT)")
     con.execute("CREATE INDEX idx_words_key_lower ON words(key_lower)")

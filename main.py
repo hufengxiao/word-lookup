@@ -491,7 +491,9 @@ def main():
         if sys.stdout is not None:
             print(f"Word Lookup {__version__}")
             return 0
-        from PySide6.QtWidgets import QApplication, QMessageBox
+        # windowed exe 无控制台：用 Qt 弹窗。注意局部只 import QMessageBox，
+        # 避免再次 import QApplication 遮蔽主函数里的全局同名绑定(见顶部 import)。
+        from PySide6.QtWidgets import QMessageBox
         app = QApplication(sys.argv)
         QMessageBox.information(
             None, "Word Lookup",

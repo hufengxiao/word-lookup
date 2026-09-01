@@ -3,11 +3,24 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.7.12] - 2026-09-01
+
+### 修复
+- **`--version` 从终端启动时直接打印到终端**（而非弹窗）：windowed exe 通过 Win32 `AttachConsole(ATTACH_PARENT_PROCESS)` 把标准输出接回 PowerShell / Windows Terminal / cmd，立即打印 `Word Lookup <ver>` 后退出；仅当无法附加控制台（如双击运行）才退化为 Qt 弹窗。
+- **版本号显示错误**：修正 exe 报告的版本与其 release 版本不一致的问题（此前 v0.7.11 误报 0.7.9）；`__version__` 与 pyproject.toml 对齐为 0.7.12。
+
 ## [v0.7.10] - 2026-09-01
 
 ### 新增
 - **命令行 `--version` / `-v`**：`WordLookup.exe --version` 打印版本号后退出（无需启动 GUI）。
 - **集中版本号** `__version__`：main.py 与 pyproject.toml / GitHub tag 同步，便于排查已安装 exe 的版本。
+
+## [v0.7.11] - 2026-09-01
+
+### 修复
+- **windowed exe 中 `--version` 弹窗**：不再仅靠 `print`（windowed 无控制台看不到），改为 Qt 弹窗展示版本。
+- **修复启动 UnboundLocalError**：`--version` 分支内的局部 `import QApplication` 遮蔽全局同名绑定，导致正常启动崩溃；改为仅局部导入 `QMessageBox`。
+- CI 冒烟（exe 启动存活）纳入回归防护。
 
 ## [v0.7.9] - 2026-09-01
 

@@ -3,6 +3,15 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.7.15] - 2026-09-01
+
+### 新增
+- **托盘右键「关于 / 版本信息」**：常驻托盘图标右键即可查看版本号（`get_version()`，单一来源），不用再跑命令行。
+- **`--version` / `-v` 行为收敛**：直接显示版本对话框（GUI 程序标准行为，稳定、不闪黑框）；有真实控制台时才终端打印。
+
+### 变更
+- 移除不可靠的 windowed exe `AttachConsole` 打印路径（经多版本 + CI runner 实测，PyInstaller `--windowed` 无法可靠打印到父终端）。
+
 ## [v0.7.14] - 2026-09-01
 
 ### 修复

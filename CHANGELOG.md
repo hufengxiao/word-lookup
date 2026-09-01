@@ -3,6 +3,21 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.7.10] - 2026-09-01
+
+### 新增
+- **命令行 `--version` / `-v`**：`WordLookup.exe --version` 打印版本号后退出（无需启动 GUI）。
+- **集中版本号** `__version__`：main.py 与 pyproject.toml / GitHub tag 同步，便于排查已安装 exe 的版本。
+
+## [v0.7.9] - 2026-09-01
+
+### 工程化 / 质量
+- **CI 重构**：lint + 单元测试在 Python 3.11/3.12/3.13 矩阵跑（`ruff check` + `pytest tests/`）；pip 依赖缓存加速；job 超时保护；并发构建用 `concurrency.cancel-in-progress` 防踩踏；release 仅 tag 触发。
+- **单元测试**：新增 `tests/test_dict_render.py`（例句配对 / oT 中文容器 / 无例句不硬凑 / style 位置 / idm 样式 / shcut 防污染 6 项）。
+- **ruff 收敛**：新增全局 ruff 配置（务实规则 + 防御性例外），代码库 `ruff check` 清零。
+- **`pyproject.toml`（PEP 621）**：项目元数据、依赖、dev extras、ruff/pytest 配置集中管理。
+- **文档**：README 补全项目结构、加 CI/许可徽章；build.md 的「方式 B 内置 db」标注废弃并存原因；新增 `CHANGELOG.md`、MIT `LICENSE`（M 系列改进）。
+
 ## [v0.7.8] - 2026-09-01
 
 ### 修复

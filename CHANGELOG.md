@@ -3,6 +3,23 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 重构
+- **精简 MDX 解析器死代码**：移除从未被调用的 `MDX.lookup()`/`get_all()`/`key_texts()`/`build_lookup_table()`/`get_by_key_id()`。GUI 查词走 SQLite `Searcher`，索引构建走流式 `_iter_record_blocks()`，这些遗留接口（其中 `lookup` 还是线性扫描全词条）留着是隐患。
+- **去重 summary 回填逻辑**：`main.py` 的 `_run_backfill` 与 `indexer.backfill_summary` 内容重复，归一为后者，并新增可选 `progress` 回调（GUI 主线程用它 pump 事件保持响应）；`main.py` 删除重复实现。
+- **`--version`/`-v` 处理抽取**：提炼为 `_cli_version_flag()`，消除源码/Qt 分支的冗余 `QApplication` 初始化。
+
+### 修复
+- **词性缩写无法归一（潜伏 bug）**：`summary._ALIAS` 字典构造方向写反（`{完整名: 缩写}`），导致 `n`/`v`/`adj` 这类单字母缩写词性永远无法被归一为规范名（因牛津 class 通常已是完整名 `noun`/`verb` 而被掩盖）。修正为 `{缩写: 完整名}`。
+- **词性前缀匹配歧义**：`_norm_pos` 兜底从"首个命中即返回"改为"取最长前缀匹配"，消除短规范词命中顺序不定造成的歧义。
+
+### 变更
+- **补了测试覆盖空白**：新增 `tests/test_searcher_summary.py`（14 用例），覆盖 `Searcher.search`（前缀/大小写/limit/空查询）、`lookup`（精确/缺失/`@@@LINK` 重定向）、`summary`（词性归一/摘要/截断）、`indexer.backfill_summary`（补列+幂等）。此前 CI 只测渲染器。
+- **lzo 后端缓存句柄**：LZO 解压后端只在首次探测时 `CDLL()` 一次并缓存句柄，避免对词典百万级词条重复加载动态库。
+- **结果列表跳过重复渲染**：查询建议与上次完全相同（如回退到已见前缀）时不再重建列表，保留当前选中/滚动位置。
+- **打包配置**：PyInstaller 关闭 UPX（`upx=False`，降低杀软误报）；`pyproject.toml` classifier 改为 `OS Independent`（库实际跨平台）。
+
 ## [v0.7.17] - 2026-09-01
 
 ### 修复

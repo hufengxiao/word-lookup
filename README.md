@@ -2,6 +2,8 @@
 
 [![Build](https://github.com/hufengxiao/word-lookup/actions/workflows/build.yml/badge.svg)](https://github.com/hufengxiao/word-lookup/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/hufengxiao/word-lookup?sort=semver&color=blue)](https://github.com/hufengxiao/word-lookup/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/hufengxiao/word-lookup/total?color=green)](https://github.com/hufengxiao/word-lookup/releases/latest)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 一个像 macOS **Spotlight** 一样即按即查的悬浮查词工具，专为 Windows 设计。
@@ -82,13 +84,19 @@ python main.py oxford.db
 
 ## 📦 打包为 Windows EXE
 
-详细步骤见 [build.md](build.md)。核心命令：
+详细步骤见 [build.md](build.md)。推荐发布「通用 exe」——不带词典，用户首启自动选 `.mdx`：
 
 ```bash
-pip install pyinstaller
-pyinstaller --noconfirm --onefile --windowed \
-    --add-data "oxford.db;." main.py -n OxfordLookup
+pip install pyinstaller python-lzo
+pyinstaller --noconfirm --onefile --windowed ^
+    --name WordLookup ^
+    --collect-all lzo ^
+    --add-data "dictionary;dictionary" ^
+    main.py
 ```
+
+> `--collect-all lzo` 会把 `python-lzo` 的 C 扩展一起打进去，否则 Windows 上无法解压 LZO 词典。
+> 想开箱即用内置词典，或想减少杀软误报（改用 `--onedir`），见 [build.md](build.md)。
 
 ## 📜 许可
 

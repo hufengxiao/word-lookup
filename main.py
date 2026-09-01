@@ -450,6 +450,22 @@ def bootstrap(app, argv) -> int:
     write_log("[bootstrap] ready")
 
 
+def _show_about(parent=None):
+    """统一版本 / 关于对话框 —— 托盘「关于」与 `--version` 共用同一实现。"""
+    from PySide6.QtWidgets import QMessageBox
+    box = QMessageBox(parent)
+    box.setWindowTitle("关于 Word Lookup")
+    box.setIcon(QMessageBox.Icon.Information)
+    box.setText("Word Lookup")
+    box.setInformativeText(
+        f"版本 {get_version()}\n\n"
+        "高度仿 macOS Spotlight 的轻量查词工具\n"
+        "更新见 github.com/hufengxiao/word-lookup"
+    )
+    box.addButton(QMessageBox.StandardButton.Ok)
+    box.exec()
+
+
 def _setup_tray(app, window: SearchWindow, gh):
     """创建系统托盘图标，作为后台驻留的可见入口。"""
 
@@ -476,18 +492,7 @@ def _setup_tray(app, window: SearchWindow, gh):
             tray.setIcon(QIcon(icon_path))
 
         def show_about():
-            from PySide6.QtWidgets import QMessageBox
-            box = QMessageBox(window)
-            box.setWindowTitle("关于 Word Lookup")
-            box.setIcon(QMessageBox.Icon.Information)
-            box.setText("Word Lookup")
-            box.setInformativeText(
-                f"版本 {get_version()}\n\n"
-                "高度仿 macOS Spotlight 的轻量查词工具\n"
-                "更新见 github.com/hufengxiao/word-lookup"
-            )
-            box.addButton(QMessageBox.StandardButton.Ok)
-            box.exec()
+            _show_about(window)   # 与 --version 共用统一 About 对话框
 
         menu = QMenu()
         act_open = menu.addAction("打开查词 (Ctrl+Shift+M)")
@@ -538,17 +543,9 @@ def main():
         if sys.stdout is not None:               # 源码/有控制台语境: 直接打印
             print(f"Word Lookup {get_version()}")
             return 0
-        # windowed exe: Qt 模态弹窗显示版本 (不闪黑框)
-        from PySide6.QtWidgets import QMessageBox
+        # windowed exe: Qt 模态弹窗显示版本（与托盘 About 统一）
         app = QApplication(sys.argv)
-        box = QMessageBox()
-        box.setWindowTitle("关于 Word Lookup")
-        box.setIcon(QMessageBox.Icon.Information)
-        box.setText("Word Lookup")
-        box.setInformativeText(
-            f"版本 {get_version()}\n更新见 github.com/hufengxiao/word-lookup")
-        box.addButton(QMessageBox.StandardButton.Ok)
-        box.exec()
+        _show_about(app)
         return 0
 
     app = QApplication(sys.argv)

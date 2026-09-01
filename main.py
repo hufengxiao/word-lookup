@@ -526,20 +526,24 @@ def _print_version_to_parent_console() -> bool:
     """
     try:
         import ctypes
+        import msvcrt
+        import os as _os
     except Exception:
         return False
     kd = ctypes.windll.kernel32
-    if not kd.GetConsoleWindow():                 # 自身无控制台(PyInstaller windowed)
-        kd.FreeConsole()                          # 排除残留绑定
-        if not kd.AttachConsole(-1):             # ATTACH_PARENT_PROCESS
-            return False                         # 没有可附加的父终端
+    # 自身无控制台(PyInstaller --windowed) 时，先附加到父终端并拿到其 stdout 句柄
     try:
-        stdout_fd = kd.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
-        if not stdout_fd or stdout_fd == -1:
+        if not kd.GetConsoleWindow():                 # 自身无控制台
+            kd.FreeConsole()                          # 排除残留绑定,避免 ACCESS_DENIED
+            if not kd.AttachConsole(-1):             # ATTACH_PARENT_PROCESS
+                return False                         # 没有可附加的父终端
+        h_stdout = kd.GetStdHandle(-11)              # STD_OUTPUT_HANDLE (HANDLE)
+        if not h_stdout or h_stdout == -1:
             return False
-        import io
-        sys.stdout = io.TextIOWrapper(
-            io.FileIO(stdout_fd, "w"), encoding="utf-8", newline="")
+        fd = msvcrt.open_osfhandle(h_stdout, _os.O_WRONLY)   # HANDLE -> POSIX fd
+        if fd < 0:
+            return False
+        sys.stdout = _os.fdopen(fd, "w", encoding="utf-8")   # fd -> file object
     except Exception:
         return False
     try:

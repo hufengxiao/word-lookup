@@ -475,9 +475,26 @@ def _setup_tray(app, window: SearchWindow, gh):
             from PySide6.QtGui import QIcon
             tray.setIcon(QIcon(icon_path))
 
+        def show_about():
+            from PySide6.QtWidgets import QMessageBox
+            box = QMessageBox(window)
+            box.setWindowTitle("关于 Word Lookup")
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText("Word Lookup")
+            box.setInformativeText(
+                f"版本 {get_version()}\n\n"
+                "高度仿 macOS Spotlight 的轻量查词工具\n"
+                "更新见 github.com/hufengxiao/word-lookup"
+            )
+            box.addButton(QMessageBox.StandardButton.Ok)
+            box.exec()
+
         menu = QMenu()
         act_open = menu.addAction("打开查词 (Ctrl+Shift+M)")
         act_open.triggered.connect(open_window)
+        menu.addSeparator()
+        act_about = menu.addAction("关于 / 版本信息")  # X2: 常驻可见版本号
+        act_about.triggered.connect(show_about)
         menu.addSeparator()
         act_quit = menu.addAction("退出")
         act_quit.triggered.connect(app.quit)
@@ -511,68 +528,27 @@ class AppBridge(QObject):
         self._window.toggle()
 
 
-# ----------------------------------------------------------------------------
-def _print_version_to_parent_console() -> bool:
-    """尽量在启动本 exe 的父终端(PowerShell/Windows Terminal/cmd)打印一行。
-
-    PyInstaller --windowed 的 exe 默认不绑定控制台，sys.stdout 为 None，直接
-    print 无处可去。这里用 Win32 AttachConsole(ATTACH_PARENT_PROCESS) 把自己
-    接到父进程的终端，再把标准输出指向该终端的 CONOUT$ 句柄即可即时打印。
-
-    注意: 绝不用 AllocConsole() 兜底 —— 那会凭空弹出一个一闪而过的黑框
-    (用户已碰到)。附加失败就返回 False, 由调用方改用 Qt 模态弹窗。
-
-    返回 True 表示已成功在父终端打印。
-    """
-    try:
-        import ctypes
-        import msvcrt
-        import os as _os
-    except Exception:
-        return False
-    kd = ctypes.windll.kernel32
-    # 自身无控制台(PyInstaller --windowed) 时，先附加到父终端并拿到其 stdout 句柄
-    try:
-        if not kd.GetConsoleWindow():                 # 自身无控制台
-            kd.FreeConsole()                          # 排除残留绑定,避免 ACCESS_DENIED
-            if not kd.AttachConsole(-1):             # ATTACH_PARENT_PROCESS
-                return False                         # 没有可附加的父终端
-        h_stdout = kd.GetStdHandle(-11)              # STD_OUTPUT_HANDLE (HANDLE)
-        if not h_stdout or h_stdout == -1:
-            return False
-        fd = msvcrt.open_osfhandle(h_stdout, _os.O_WRONLY)   # HANDLE -> POSIX fd
-        if fd < 0:
-            return False
-        sys.stdout = _os.fdopen(fd, "w", encoding="utf-8")   # fd -> file object
-    except Exception:
-        return False
-    try:
-        print(f"Word Lookup {get_version()}")
-        sys.stdout.flush()
-    except Exception:
-        return False
-    return True
-
-
 def main():
     # ---- CLI 便捷参数：--version / -v ----
+    # 说明: PyInstaller --windowed(console=False) 的 exe 在 Windows 下不绑定控制台,
+    # 经多版本实测(+ CI runner + 本机)确认无法可靠打印到父终端。故统一用 Qt 弹窗
+    # 显示版本号 —— 这是 GUI 程序的标准行为, 稳定、不闪黑框。日常看版本建议直接
+    # 用托盘右键「关于 / 版本信息」(见 _setup_tray)。
     if any(a in ("--version", "-v") for a in sys.argv[1:]):
-        ok = False
-        if sys.stdout is not None:               # 有控制台语境(源码 run/调试)
+        if sys.stdout is not None:               # 源码/有控制台语境: 直接打印
             print(f"Word Lookup {get_version()}")
-            ok = True
-        elif _print_version_to_parent_console():  # windowed 但在终端里启动
-            ok = True
-        if ok:
             return 0
-        # 兜底：无法在终端打印(如双击启动) → Qt 模态框 (会阻塞直到用户点掉)
-        # 局部只 import QMessageBox，绝不重复 import QApplication(避免遮蔽全局)。
+        # windowed exe: Qt 模态弹窗显示版本 (不闪黑框)
         from PySide6.QtWidgets import QMessageBox
         app = QApplication(sys.argv)
-        QMessageBox.information(
-            None, "Word Lookup",
-            f"Word Lookup\n版本 {get_version()}\n更新见 GitHub hufengxiao/word-lookup",
-        )
+        box = QMessageBox()
+        box.setWindowTitle("关于 Word Lookup")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setText("Word Lookup")
+        box.setInformativeText(
+            f"版本 {get_version()}\n更新见 github.com/hufengxiao/word-lookup")
+        box.addButton(QMessageBox.StandardButton.Ok)
+        box.exec()
         return 0
 
     app = QApplication(sys.argv)

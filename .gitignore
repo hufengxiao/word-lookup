@@ -3,3 +3,13 @@ smoke_result.txt
 __pycache__/
 WordLookup.log
 _win_*.png
+
+# 敏感辅助脚本/凭据 —— 绝不要提交（含真实 IP / 密码 / token）
+_ssh*.py
+*_run.py
+ssh_*.py
+.env
+*.pem
+*.key
+*.p12
+.credentials

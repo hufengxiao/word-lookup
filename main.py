@@ -484,9 +484,19 @@ class AppBridge(QObject):
 
 # ----------------------------------------------------------------------------
 def main():
-    # ---- CLI 便捷参数：--version / -v 打印版本后退出（无需创建 GUI）----
+    # ---- CLI 便捷参数：--version / -v ----
+    # windowed exe 无控制台(sys.stdout is None): 内存中无法 print 出来，
+    # 于是有控制台时 print，无控制台时用 Qt 弹窗显示版本号。
     if any(a in ("--version", "-v") for a in sys.argv[1:]):
-        print(f"Word Lookup {__version__}")
+        if sys.stdout is not None:
+            print(f"Word Lookup {__version__}")
+            return 0
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        app = QApplication(sys.argv)
+        QMessageBox.information(
+            None, "Word Lookup",
+            f"Word Lookup\n版本 {__version__}\n更新见 GitHub hufengxiao/word-lookup",
+        )
         return 0
 
     app = QApplication(sys.argv)

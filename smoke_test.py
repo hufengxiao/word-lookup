@@ -130,6 +130,18 @@ def main():
     assert len(ex_no) == 0, f"FAIL: 无 examples 块的词条不应产生例句, 却得到 {len(ex_no)} 条(会把整词条当例句)"
     step("dict_render 例句健壮性: 无 examples 块的词条返回空 ✓ (不再冒一大坨)")
 
+    # 惯用语/idm 词条(如 "fuck me")没有 <h1 class=headword>, 只有 <span class=idm>,
+    # 也必须被渲染成有词头+有样式的条目, 不能因缺 h1 掉进 _fallback 而"详情没样式"。
+    idm_html = ("<div id='entryContent' class='oald'><span class='idm-g'>"
+                "<span class='idm'>fuck me</span>"
+                "<span class='def'>used to express surprise</span><defT><chn>（表示惊奇）</chn></defT>"
+                "<ul class='examples'><li><span class='x'>Fuck me! Look at that.</span>"
+                "<aT><chn><ai>操！看那个。</ai></chn></aT></li></ul></span></div>")
+    styled_idm = convert_dict_html(idm_html)
+    assert "<style>" in styled_idm, "FAIL: idm 惯用语词条未渲染出样式(掉进无样式 fallback)"
+    assert "class='word'" in styled_idm, "FAIL: idm 惯用语词条缺少词头大标题"
+    step("dict_render 惯用语(idm)词条带样式 ✓ (不再详情无样式)")
+
     # 多词性健壮性: 喂一个含多词性(section)的真实结构, 应生成多个词性小节且不崩
     multi = ("<div id='entryContent'><div class='entry'><h1 class='headword'>run</h1>"
              "<span class='pos'>verb</span><ol class='sense_single'>"

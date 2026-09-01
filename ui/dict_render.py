@@ -49,7 +49,9 @@ class DictHtmlParser(HTMLParser):
         return any(n in c for n in names)
 
     def _sem_of(self, tag, attrs):
-        if tag == "h1" or self._cls_has(attrs, "headword"):
+        # idm = 惯用语/短语词目(如 "fuck me"), 也视作词头, 避免这类词典条目
+        # 因没有 <h1 class=headword> 而被踢进 _fallback → 详情失去样式。
+        if tag == "h1" or self._cls_has(attrs, "headword") or self._cls_has(attrs, "idm"):
             return "headword"
         if self._cls_has(attrs, "pos"):
             return "pos"
@@ -334,7 +336,9 @@ def _fallback(html: str) -> str:
     h = re.sub(r"<audio\b[^>]*>.*?</audio>", "", h, flags=re.I | re.S)
     h = re.sub(r"\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", "", h, flags=re.I)
     h = re.sub(r"<img\b[^>]*>", "", h, flags=re.I)
-    return _HEADER + h
+    # 兜底也套上统一深色样式(而非纯 <!DOCTYPE>+原文), 否则未知结构词条在 QTextDocument
+    # 里会用默认浅色/无排版, 视觉上"完全没样式"。此处即使 class 未全对齐, 至少深色底+基础文字可读。
+    return _HEADER + "<html><head>" + _STYLE + "</head><body>" + h + "</body></html>"
 
 _HEADER = "<!DOCTYPE html>"
 

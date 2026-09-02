@@ -250,6 +250,14 @@ class SearchWindow(QFrame):
         _tf.setPointSize(19)
         _tf.setFamilies([FONT_FAMILY, FONT_FAMILY_CJK])
         self._title.setFont(_tf)
+        # 【关键】量化输入框高度必须给足中文字形空间。Windows 上 Qt/布局常按拉丁
+        # (Segoe UI) metrics 计算 QLineEdit 默认高度，纯中文实心方块字形远高于拉丁，
+        # 会以控件水平中线为中心上下溢出 → 只看到字的中间一条(上下均被裁)。
+        # 显式 minimumHeight = 中文字体 metrics 高度 + 上下留白(也预留 IME 组合下划线)。
+        # min-h 用 fontMetrics 动态算, 再 +16 上下 padding, 并保底 40px。
+        _tfh = QFontMetrics(_tf).height()
+        self._title.setMinimumHeight(max(40, _tfh + 16))
+        self._title.setAlignment(Qt.AlignVCenter)
         self._title.setStyleSheet(
             "QLineEdit { background: transparent; color:#FFFFFF; border:none;"
             " selection-background-color:%s; }"
@@ -284,6 +292,12 @@ class SearchWindow(QFrame):
         _lf.setPointSize(15)
         _lf.setFamilies([FONT_FAMILY, FONT_FAMILY_CJK])
         self._list.setFont(_lf)
+        # 【关键】列表行高必须给足中文字形空间。QListView 对未显式设 sizeHint 的空态项
+        # ("没有找到 xxx") 用 view.font() metrics 算行高，中文实心方块会高于拉丁 → 行被压矮、
+        # 中文上下被裁只剩中间一条。统一点缀: 每行显式 sizeHint = CJK metrics + 垂直 padding。
+        # setUniformItemSizes(True) 让所有行(含空态)统一走该高度, 绕开 view 默认栏矮计算。
+        self._row_h = max(36, QFontMetrics(_lf).height() + 18)
+        self._list.setUniformItemSizes(True)
         self._list.setStyleSheet(
             "QListWidget { background: transparent; color:#e8e8e8;"
             " border:none; outline:none; }"
@@ -651,6 +665,7 @@ class SearchWindow(QFrame):
             it.setData(Qt.UserRole, "")
             it.setData(Qt.UserRole + 1, "试试更少字、检查拼写，或按 Esc 关闭")
             it.setFlags(Qt.NoItemFlags)
+            it.setSizeHint(QSize(self._list.width() or 300, self._row_h))
             self._list.addItem(it)
             self._list.setCurrentRow(-1)
             return
@@ -659,6 +674,7 @@ class SearchWindow(QFrame):
             it = QListWidgetItem(key)
             it.setData(Qt.UserRole, key)
             it.setData(Qt.UserRole + 1, summary or "")  # 释义预览
+            it.setSizeHint(QSize(self._list.width() or 300, self._row_h))
             self._list.addItem(it)
         self._list.setCurrentRow(0)
 

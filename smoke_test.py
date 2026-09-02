@@ -268,6 +268,20 @@ def main():
     step(f"空态项行高 sizeHintForRow: {row_h}px (期望 >= 30, 不应塌成仅选手符高度)")
     assert row_h >= 20, f"FAIL(问题2): 结果行高塌陷成 {row_h}px(只剩一个字符)"
 
+    # 回归(问题2 根因·垂直裁剪)：中文只显示"字中间一条" = 控件/行高不足以容纳中文
+    # 实心方块字形，被以控件水平中线为中心上下各裁一段。必须显式给足 input 高度 +
+    # 列表 item 行高(都比 Latin metrics 高, 且显式 sizeHint 绕开 view 的矮默认计算)。
+    _mh = win._title.minimumHeight()
+    step(f"输入框 minimumHeight={_mh}px (应≥40, 给足中文字形) | _row_h={win._row_h}px")
+    assert _mh >= 40, f"FAIL: 输入框默认高度不足({_mh}px), 中文会被上下裁成中间一条"
+    # 列表任意一行 item 的显式 sizeHint 应 == _row_h(不等于 view 按自身 metrics 算出的矮默认)
+    if win._list.count():
+        it0 = win._list.item(0)
+        if it0 is not None:
+            hint = it0.sizeHint().height()
+            step(f"列表首项显式 sizeHint 高={hint}px (应≈_row_h={win._row_h})")
+            assert hint == win._row_h, "FAIL: 列表项未设显式中文字高(空态/候选会被压矮)"
+
     # 键盘事件 (Esc 隐藏)
     ev = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
     win.keyPressEvent(ev)

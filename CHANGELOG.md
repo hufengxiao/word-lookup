@@ -3,6 +3,27 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.7.22] - 2026-09-02
+
+### 修复（问题2 真正根因：靠用户实机反馈确认是**垂直裁切**成「只剩中间一条」）
+- 基于用户实机确认（截图反推「只看到字符的中间一条；英文完全正常、列表空态也矮」）：
+  这不是字体回退问题，也不是 IME 组合态，而是**控件/行高不足以容纳中文汉字的实心方块字形**。
+  - 中文（如微软雅黑）是实心方块，字形上下高度远高于拉丁（Segoe UI）字符；
+  - Windows 的 Qt 布局按 ≈拉丁字体 metrics 给 QLineEdit 和 QListView 一个较矮的行高，
+    中文超出该高度时**以控件水平中线为中心上下对称**被裁 → 只显示「字中间一条」，
+    顶部与底部都切掉；英文（x-height 矮）刚好完整装下，所以英文正常。
+- **修复**：
+  1. 搜索输入框 `_title.setMinimumHeight(QFontMetrics(中文字体).height() + 16)`（保底 40px）
+     + `setAlignment(AlignVCenter)` —— 让输入框高度始终够容纳中文实心字形，不再上下裁切。
+  2. 结果列表 `_list.setUniformItemSizes(True)`，并给**每个 item（含空态「没有找到 xxx」与
+     候选）显式 `setSizeHint(宽, CJK metrics + padding)`** —— 绕开 QListWidget 对未设
+     sizeHint 的行按自身 CJK metrics 算矮行高的默认行为 → 空态/候选行不再塌。
+- 保留 v0.20/21 的 `setFamilies` 与 `inputMethod` 清理（无害，对相近路径有益）。
+
+### 测试
+- `smoke_test.py` 新增回归：输入框 `minimumHeight()>=40`；列表首项显式 `sizeHint` 高度
+  == `_row_h`；继续覆盖 `setFamilies`、IME 清理、空态行高。
+
 ## [v0.7.21] - 2026-09-02
 
 ### 修复

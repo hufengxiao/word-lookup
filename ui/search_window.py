@@ -45,9 +45,14 @@ SEARCH_DELAY_MS = 60      # 输入去抖
 CARD_RADIUS = 14
 # 尺寸改为按屏比例自适应（不再硬编码固定像素，任何桌面都“刚刚好”）
 W = 520                      # 基准宽，实际按屏幕比例取
-H_COLLAPSED = 68
-H_EXPANDED = 420
-H_DETAIL = 660
+# 窗口总高度。v0.7.22 输入框 minimumHeight 提到至少 45px(容纳中文实心字形)后，
+# 顶部输入行(top margins 12+12 + 输入框≈45) ≈ 69px，会超过旧 H_COLLAPSED(68) 导致
+# 输入框溢出下界、中文与列表文字重叠、列表可用高度被挤矮。故各档位上调，给输入行
+# 留出足够裕量（收起档约 69px 输入行 + 7px margin buffer → 76px）。展开档在收起档
+# 基础上保持原有差量(列表/详情区高度不变)。
+H_COLLAPSED = 76
+H_EXPANDED = 428
+H_DETAIL = 668
 
 def _scale_width():
     """窗口宽度随屏幕可用宽度缩放，锁定在 [420, 700] 区间（Spotlight 居中偏上）。"""
@@ -546,9 +551,14 @@ class SearchWindow(QFrame):
         t = min(1.0, self._resize_ticks / float(self._resize_total))
         mid = int(self._resize_from + (self._resize_to - self._resize_from) * t)
         self.resize(self._win_w, max(H_COLLAPSED, mid))
+        # Windows 无边框置顶窗口在 setFixedSize + resize 动画下，布局不总是即时重排，
+        # 子控件(输入框/列表/详情)几何会停留在旧位置 → 中文与列表文字重叠。
+        # 强制当前布局立即重新激活，保证每次动画帧后子控件跟随窗口新几何。
+        self.layout().activate()
         if t >= 1.0:
             self.setFixedSize(self._win_w, self._resize_to)
             self._resize_timer.stop()
+            self.layout().activate()
 
     def _collapse(self, animated: bool = False):
         """收起为极窄搜索条。

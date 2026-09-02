@@ -22,7 +22,7 @@ from PySide6.QtGui import QGuiApplication, QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication
 
 from dictionary.searcher import Searcher
-from ui.search_window import SearchWindow
+from ui.search_window import H_EXPANDED, SearchWindow
 
 results = []
 
@@ -281,6 +281,18 @@ def main():
             hint = it0.sizeHint().height()
             step(f"列表首项显式 sizeHint 高={hint}px (应≈_row_h={win._row_h})")
             assert hint == win._row_h, "FAIL: 列表项未设显式中文字高(空态/候选会被压矮)"
+
+    # 回归(布局垂直不重叠)：输入框 minimumHeight 加大后, 若窗口高度不足以容纳
+    # 「输入行 + 列表」, 中文会溢出下界与列表文字重叠、列表可视高度被挤矮。
+    # 断言: 展开态下 列表 top ≥ 输入框 bottom(不重叠)。
+    win._animate_height(H_EXPANDED)
+    win._resize_ticks = 999
+    win._resize_tick()
+    win.layout().activate()
+    _list_top = win._list.geometry().top()
+    _title_bottom = win._title.geometry().bottom()
+    step(f"布局: 列表top({_list_top}) vs 输入框bottom({_title_bottom}) 是否重叠: {_list_top < _title_bottom}")
+    assert _list_top >= _title_bottom, "FAIL: 列表与输入框垂直重叠(中文会被压到列表上)"
 
     # 键盘事件 (Esc 隐藏)
     ev = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)

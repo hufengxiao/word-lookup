@@ -110,10 +110,9 @@ class _ResultDelegate(QStyledItemDelegate):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        # 中英文字体栈：中文候选(如"没有找到 金额")必须有 Microsoft YaHei 回退，
-        # 否则 Windows 上按 Segoe UI 行盒渲染会裁切/塌贴。
-        self._key_font = QFont(f"{FONT_FAMILY}, {FONT_FAMILY_CJK}", 15, QFont.Bold)
-        self._sum_font = QFont(f"{FONT_FAMILY}, {FONT_FAMILY_CJK}", 13)
+        # 中英文字体栈：必须用 setFamilies（QFont("A, B") 不会回退到中文）。
+        self._key_font = self._make_font(15, QFont.Bold)
+        self._sum_font = self._make_font(13, QFont.Normal)
         # 统一色板：主文本白，选中时纯白，未选中次级灰；释义预览一律敲会灰(不再用橙色)
         self._bg_on = QColor(*CLR_SEL_BG)
         self._key_on = QColor(CLR_TEXT)
@@ -121,11 +120,19 @@ class _ResultDelegate(QStyledItemDelegate):
         self._sum_on = QColor(255, 255, 255, 220)
         self._sum_off = QColor(CLR_TEXT_SECONDARY)
 
+    @staticmethod
+    def _make_font(pt: int, weight: QFont.Weight):
+        f = QFont()
+        f.setPointSize(pt)
+        f.setWeight(weight)
+        f.setFamilies([FONT_FAMILY, FONT_FAMILY_CJK])
+        return f
+
     def sizeHint(self, option, index):
         w = max(option.rect.width(), 320)
-        # 行高用真实字体 metrics（含中文回退），不再硬编码 42——中文行高过低会塌成
-        # 只有几个像素、整行只剩一个字符的高度。用 _key_font 自行度量，稳妥可用。
-        fm = QFontMetrics(self._key_font)
+        # 行高用 option.font(=view.font，含中文回退) 的真实 metrics，
+        # 保证中文候选行高足够、不塌成一个字符。
+        fm = QFontMetrics(option.font)
         h = max(38, fm.height() + 14)
         return QSize(max(w, 320), h)
 
@@ -236,8 +243,12 @@ class SearchWindow(QFrame):
         self._title.setPlaceholderText("输入英文单词查询…")
         # 必须显式给中文字体：仅 Segoe UI 时 Windows 回退中文字体，其 ascent
         # 与 Latin 行盒不匹配，中文 glyph 会被 QLineEdit 按 Latin 行高从顶部裁切
-        #（表现为「中文只显示上半截」）。中文 fallback 到 Microsoft YaHei 后行高正确。
-        self._title.setFont(QFont(f"{FONT_FAMILY}, {FONT_FAMILY_CJK}", 19))
+        #（表现为「中文只显示上半截」）。windows 回退用 setFamilies（不是 QFont(family_str)，
+        # 后者把 "A, B" 当整体、不会回退到 Microsoft YaHei）。
+        _tf = QFont()
+        _tf.setPointSize(19)
+        _tf.setFamilies([FONT_FAMILY, FONT_FAMILY_CJK])
+        self._title.setFont(_tf)
         self._title.setStyleSheet(
             "QLineEdit { background: transparent; color:#FFFFFF; border:none;"
             " selection-background-color:%s; }"
@@ -265,13 +276,17 @@ class SearchWindow(QFrame):
         # ---- 结果列表 ----
         self._list = QListWidget(self)
         self._list.setItemDelegate(_ResultDelegate(self._list))
-        # 中文必须有显式字体回退（同 _title 的原因，否则中文候选被裁/行高塌陷）。
+        # 关键：必须给 view 本身 setFont(setFamilies) 含中文字体。空态项("没有找到 xxx")
+        # 的行高由 QListView 用 view.font() 的 QFontMetrics 计算（不经 delegate），
+        # 若 view.font 只是 Segoe UI，Windows 对中文回退的 metrics 极低 → 空态行塌成一个字符。
+        _lf = QFont()
+        _lf.setPointSize(15)
+        _lf.setFamilies([FONT_FAMILY, FONT_FAMILY_CJK])
+        self._list.setFont(_lf)
         self._list.setStyleSheet(
-            "QListWidget { background: transparent; color: #e8e8e8;"
-            " border: none; outline: none; font-size: 15px;"
-            " font-family:'%s','%s'; }"
+            "QListWidget { background: transparent; color:#e8e8e8;"
+            " border:none; outline:none; }"
             "QListWidget::item { margin: 0 8px; }"
-            % (FONT_FAMILY, FONT_FAMILY_CJK)
         )
         self._list.setSpacing(1)
         self._list.hide()

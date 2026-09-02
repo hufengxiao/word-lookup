@@ -228,9 +228,16 @@ def main():
     assert not win._detail_view.isVisible(), "FAIL(问题1): 中文无匹配却进了详情"
 
     # 回归：空态项("没有找到 xxx")行高不应塌成一个字符高(问题2)
-    # 根因修复：给 _list 显式中文字体栈 + _ResultDelegate.sizeHint 改用真实字体
-    # metrics 而非硬编码 42（中文 metrics 低时硬编码行高也会让行塌成几像素）。
-    # 用 QListView 公开的 sizeHintForRow 测量"空态行"应得高度，最直接反映真实行高。
+    # 根因修复的关键 = view(_list) 本身必须 setFont(setFamilies) 含中文字体。
+    # 空态行高由 QListView 用 view.font() 的 QFontMetrics 计算（不经 delegate 的
+    # sizeHint）；若 view.font 只是 Segoe UI，Windows 对中文回退 metrics 极低 →
+    # 空态行塌成一个字符。上一版只给 styleSheet 加中文 font-family 无效（styleSheet
+    # 的 font-family 不改变 widget.font()），必须 setFont(setFamilies)。
+    import ui.search_window as _sw2
+    step(f"view/输入框字体中文字体回退: _list={win._list.font().families()} _title={win._title.font().families()}")
+    assert _sw2.FONT_FAMILY_CJK in win._list.font().families(), \
+        "FAIL(问题2): _list view.font 未 setFamilies 含中文字体, 空态行 Windows 必塌"
+    # 真实空态行高：用一条中文空态项度量 QListView 实际给的高度(非 delegate 兜底)
     try:
         row_h = win._list.sizeHintForRow(0)
     except Exception:

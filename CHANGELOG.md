@@ -3,6 +3,28 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.7.20] - 2026-09-02
+
+### 修复
+- **彻底修复中文被裁切 + 空态行高塌陷（上一版没真正生效）**：
+  - 上一版误用 `QFont("Segoe UI, Microsoft YaHei", …)` —— `QFont(字符串)` 把整条
+    当**单一字体名**，找不到名为 `"Segoe UI, Microsoft YaHei"` 的字体，实际只落到
+    `Segoe UI`，**中文字体回退从未生效**（搜索框中文仍只显示上半截、空态行仍塌）。
+  - 本版改用 Qt6 的 **`QFont.setFamilies(["Segoe UI", "Microsoft YaHei"])`**（真正的
+    字体列表回退），分别应用到：
+    - `QLineEdit` 搜索框 `_title` `setFont` → 中文不再被裁上半截；
+    - **`QListWidget` 结果列表 `_list` `setFont`**：这是空态行高的决定因素——空态项
+      `"没有找到 xxx"` 的行高由 QListView 用 `view.font()` 的 `QFontMetrics` 计算
+      （**不经 delegate 的 sizeHint**）。上一版只给 styleSheet 加中文 font-family 无效
+      （styleSheet 的 font-family 不改变 `widget.font()`），所以空态中文行仍塌成一个字符。
+      现在 view.font 含中文字体后，空态行回到正常高度（≥38px）。
+    - `_ResultDelegate` 词头/释义字体与 `sizeHint` 改用 `option.font`（=view.font，含中文）。
+
+### 测试
+- `smoke_test.py` 回归强化：断言 `_list` 与 `_title` 的 `QFont.families()` **确实含
+  `Microsoft YaHei`**（在此之前 styleSheet font-family 做到，setFont 未生效的镜子会
+  直接 FAIL，防止回退到上一版的无效修法）+ 空态行高 `sizeHintForRow >= 20px`。
+
 ## [v0.7.19] - 2026-09-02
 
 ### 修复

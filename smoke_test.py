@@ -294,6 +294,24 @@ def main():
     step(f"布局: 列表top({_list_top}) vs 输入框bottom({_title_bottom}) 是否重叠: {_list_top < _title_bottom}")
     assert _list_top >= _title_bottom, "FAIL: 列表与输入框垂直重叠(中文会被压到列表上)"
 
+    # 回归(根治性)：窗口被误收起的「IME 组合触发的 collapse」不应让 show 停在收起态。
+    # 真实 bug:「Ctrl+A 全选→输入中文」时 composition 把 text() 瞬时空 → _do_search
+    # 误调 _collapse() → _expanded=False 且窗口 76px; show_window 又因 _expanded 收缩。
+    # 修复: show_window 在 text 非空时强制 _expand()(以有无内容为准)。断言: 即使
+    # _expanded 已被误置 False 且窗口被收到 76, 只要输入框有内容, 显示后应回到展开态。
+    win._title.setText("金额搜索")
+    win._do_search()
+    win._expanded = False          # 模拟 IME 组合期间被 _collapse 误置
+    win.setFixedSize(win.width(), 76)
+    win.layout().activate()
+    _before_h = win.height()
+    win.show_window()              # 应触发 _expand() 展开
+    win._resize_ticks = 999
+    win._resize_tick()
+    _after_h = win.height()
+    step(f"折叠三角: 误折叠后H={_before_h} → show_window后H={_after_h} (应≥420展开)")
+    assert _after_h >= 420, f"FAIL(问题3): 窗口有内容却停在收起态 {_after_h}px(中文/放大镜/列表被挤矮)"
+
     # 键盘事件 (Esc 隐藏)
     ev = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
     win.keyPressEvent(ev)

@@ -513,7 +513,12 @@ class SearchWindow(QFrame):
             # 结果已就绪且文本没变, 不再重复搜索(避免闪烁与开销)
             if getattr(self, "_last_query", None) == txt and self._list.count():
                 self._list.show()
-                self._animate_height(H_EXPANDED if self._expanded else H_COLLAPSED)
+                # 【关键修复】只要输入框仍有内容(txt 非空)就必须展开到 428px 搜索态，
+                # 不能依赖 _expanded 标记。因为「Ctrl+A 全选→直接打中文」的 IME 组合
+                # 输入会在中途把 text() 短暂置空 → _do_search 误触发 _collapse(), 把
+                # _expanded 永久置 False、窗口收起成 76px → 中文/放大镜/列表全挤进矮框。
+                # 这里用 _expand()(以是否有内容为准)强制回到展开态, 根治"窗口不展开"。
+                self._expand()
             else:
                 self._do_search()
         else:

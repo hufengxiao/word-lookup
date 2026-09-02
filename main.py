@@ -374,6 +374,9 @@ def bootstrap(app, argv) -> int:
 
     # 3. 主窗口 + 热键
     window = SearchWindow(searcher)
+    # 几何诊断钩子：把每次 show/hide/reveal 的控件几何写入 WordLookup.log，
+    # 用于定位「中文 + 放大镜被挤/偏移」的真实根因(Windows 专属)。
+    SearchWindow.debug_log = write_log
     bridge = AppBridge(window)
 
     # 关键：bootstrap 是普通函数，返回后局部变量会被 Python 垃圾回收。

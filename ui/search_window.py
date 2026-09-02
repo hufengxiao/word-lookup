@@ -222,6 +222,31 @@ class _ResultDelegate(QStyledItemDelegate):
 class SearchWindow(QFrame):
     """Spotlight 式悬浮搜索框。"""
 
+    # 几何诊断钩子：main 装配时设为 write_log，用于在 Windows 上 Dump 触发 bug 时的
+    # 精确控件几何(窗口/输入框/放大镜/列表 的 pos/size + 字体 metrics)，一次定位
+    # 「中文 + 放大镜垂直偏移」的真实来源。默认 None(静默)。
+    debug_log = None
+
+    def _dump_geo(self, stage: str):
+        if callable(self.__class__.debug_log):
+            try:
+                w, t, m, ls = self, self._title, self._mag, self._list
+                fg = QFontMetrics(t.font())
+                geo = (
+                    "[geo:%s] win=%d,%d %dx%d title=(%d,%d %dx%d) "
+                    "t_metrics_h=%d lead=%d mag=(%d,%d %dx%d) list_top=%d list_vis=%s"
+                    % (
+                        stage, w.x(), w.y(), w.width(), w.height(),
+                        t.x(), t.y(), t.width(), t.height(),
+                        fg.height(), fg.leading(),
+                        m.x(), m.y(), m.width(), m.height(),
+                        ls.geometry().top(), ls.isVisibleTo(self),
+                    )
+                )
+                self.__class__.debug_log(geo)
+            except Exception:
+                pass
+
     def __init__(self, searcher: Searcher, parent=None):
         super().__init__(parent)
         self._searcher = searcher
@@ -494,6 +519,7 @@ class SearchWindow(QFrame):
         else:
             self._collapse()
             self._title.setFocus(Qt.OtherFocusReason)
+        self._dump_geo("show")
 
     def _reveal_tick(self):
         """唤起浮现：透明度 0→1 + y 向上偏移 14px→0（线性 168ms）。"""
@@ -508,9 +534,10 @@ class SearchWindow(QFrame):
                 self._reveal_timer.stop()
             self._reveal_timer = None
             self._refresh_opacity(force_using=True)
+            self._dump_geo("reveal")
 
     def hide_window(self):
-        # 先强制提交并重置输入法组合(composition)状态, 再隐藏。
+        self._dump_geo("pre-hide")
         # Windows 输入法「Ctrl+A 全选后直接打中文」时, 中文是否仍处在 IME 预编辑
         # (pre-edit) 组合态; 若不清理就 hide(), 下注 show() 找回焦点时会带着
         # 半提交的组合文本, 中文按被裁剪的预编辑高度重排 → 只显示上半截。

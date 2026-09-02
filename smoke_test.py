@@ -216,6 +216,28 @@ def main():
     win._do_search()
     step(f"搜索无匹配: list可见={win._list.isVisible()}, 条数={win._list.count()}")
 
+    # 回归：无匹配(如中文)、空态项按 Enter 不应切进详情视图(问题1)
+    # 根因修复：_on_return/_current_key 对 UserRole 为空的占位项返回 None，不 _show_detail
+    win._mode = "list"
+    win._detail_view.hide()
+    win._title.setText("金额")
+    win._do_search()
+    win._on_return()   # 模拟用户按 Enter
+    step(f"中文无匹配按Enter: mode={win._mode} (应 list), 详情可见={win._detail_view.isVisible()} (应 False)")
+    assert win._mode == "list", "FAIL(问题1): 查不到的中文按Enter仍切进详情视图"
+    assert not win._detail_view.isVisible(), "FAIL(问题1): 中文无匹配却进了详情"
+
+    # 回归：空态项("没有找到 xxx")行高不应塌成一个字符高(问题2)
+    # 根因修复：给 _list 显式中文字体栈 + _ResultDelegate.sizeHint 改用真实字体
+    # metrics 而非硬编码 42（中文 metrics 低时硬编码行高也会让行塌成几像素）。
+    # 用 QListView 公开的 sizeHintForRow 测量"空态行"应得高度，最直接反映真实行高。
+    try:
+        row_h = win._list.sizeHintForRow(0)
+    except Exception:
+        row_h = 0
+    step(f"空态项行高 sizeHintForRow: {row_h}px (期望 >= 30, 不应塌成仅选手符高度)")
+    assert row_h >= 20, f"FAIL(问题2): 结果行高塌陷成 {row_h}px(只剩一个字符)"
+
     # 键盘事件 (Esc 隐藏)
     ev = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
     win.keyPressEvent(ev)

@@ -3,6 +3,25 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.7.19] - 2026-09-02
+
+### 修复
+- **查不到内容的词条按 Enter 不再误切进详情视图**：`_on_return`/`_current_key` 此前对「无
+  真实词条选中」会落回输入框文本（例如输入中文"金额"）并硬切到详情模式，即使该文本查不到
+  词条，也会把窗口撑成详情页、显示空占位。现在仅当当前选中项是真实词条（`UserRole` 非空）
+  才对 Enter 进入详情；空态占位项/没有匹配时按 Enter 保持列表现状。
+- **中文内容被裁切（只显示上半截）+ 空态候选行高塌成一个字符**：`QLineEdit` 搜索框与
+  `QListWidget` 结果列表只设了 `Segoe UI`（无中文字形），Windows 上中文回退到其它字体时，
+  glyph 按 Latin 行盒渲染被从顶部裁切；结果列表中文候选行高也因此塌成数像素。
+  - 搜索框/列表/联想 delegate 全部显式中文字体回退：`Segoe UI, Microsoft YaHei`。
+  - `_ResultDelegate.sizeHint` 由硬编码 `42px` 改为用真实 `QFontMetrics(_key_font).height()`
+    度量，避免中文 metrics 偏低时行高不足。
+
+### 测试
+- `smoke_test.py` 新增回归：
+  - 中文无匹配按 Enter → 不切详情（`_mode` 保持 list、详情不可见）。
+  - 空态项行高 `sizeHintForRow >= 20px`，不再塌成仅一个字符高度。
+
 ## [v0.7.18] - 2026-09-02
 
 ### 重构

@@ -15,6 +15,7 @@ from PySide6.QtGui import (
     QColor,
     QCursor,
     QFont,
+    QFontMetrics,
     QKeyEvent,
     QLinearGradient,
     QPainter,
@@ -109,8 +110,10 @@ class _ResultDelegate(QStyledItemDelegate):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._key_font = QFont(FONT_FAMILY, 15, QFont.Bold)
-        self._sum_font = QFont(FONT_FAMILY, 13)
+        # 中英文字体栈：中文候选(如"没有找到 金额")必须有 Microsoft YaHei 回退，
+        # 否则 Windows 上按 Segoe UI 行盒渲染会裁切/塌贴。
+        self._key_font = QFont(f"{FONT_FAMILY}, {FONT_FAMILY_CJK}", 15, QFont.Bold)
+        self._sum_font = QFont(f"{FONT_FAMILY}, {FONT_FAMILY_CJK}", 13)
         # 统一色板：主文本白，选中时纯白，未选中次级灰；释义预览一律敲会灰(不再用橙色)
         self._bg_on = QColor(*CLR_SEL_BG)
         self._key_on = QColor(CLR_TEXT)
@@ -120,7 +123,11 @@ class _ResultDelegate(QStyledItemDelegate):
 
     def sizeHint(self, option, index):
         w = max(option.rect.width(), 320)
-        return QSize(max(w, 320), 42)
+        # 行高用真实字体 metrics（含中文回退），不再硬编码 42——中文行高过低会塌成
+        # 只有几个像素、整行只剩一个字符的高度。用 _key_font 自行度量，稳妥可用。
+        fm = QFontMetrics(self._key_font)
+        h = max(38, fm.height() + 14)
+        return QSize(max(w, 320), h)
 
     def paint(self, painter, option, index):
         painter.setRenderHint(QPainter.Antialiasing)
@@ -227,12 +234,15 @@ class SearchWindow(QFrame):
         top.setSpacing(0)
         self._title = QLineEdit(self)
         self._title.setPlaceholderText("输入英文单词查询…")
-        self._title.setFont(QFont(FONT_FAMILY, 19))
+        # 必须显式给中文字体：仅 Segoe UI 时 Windows 回退中文字体，其 ascent
+        # 与 Latin 行盒不匹配，中文 glyph 会被 QLineEdit 按 Latin 行高从顶部裁切
+        #（表现为「中文只显示上半截」）。中文 fallback 到 Microsoft YaHei 后行高正确。
+        self._title.setFont(QFont(f"{FONT_FAMILY}, {FONT_FAMILY_CJK}", 19))
         self._title.setStyleSheet(
             "QLineEdit { background: transparent; color:#FFFFFF; border:none;"
             " selection-background-color:%s; }"
-            "QLineEdit::placeholder { color:#6E6E73; font-family:'%s'; }"
-            % (CLR_ACCENT, FONT_FAMILY)
+            "QLineEdit::placeholder { color:#6E6E73; font-family:'%s','%s'; }"
+            % (CLR_ACCENT, FONT_FAMILY, FONT_FAMILY_CJK)
         )
         self._title.textChanged.connect(self._on_text_changed)
         self._title.returnPressed.connect(self._on_return)
@@ -255,10 +265,13 @@ class SearchWindow(QFrame):
         # ---- 结果列表 ----
         self._list = QListWidget(self)
         self._list.setItemDelegate(_ResultDelegate(self._list))
+        # 中文必须有显式字体回退（同 _title 的原因，否则中文候选被裁/行高塌陷）。
         self._list.setStyleSheet(
             "QListWidget { background: transparent; color: #e8e8e8;"
-            " border: none; outline: none; font-size: 15px; }"
+            " border: none; outline: none; font-size: 15px;"
+            " font-family:'%s','%s'; }"
             "QListWidget::item { margin: 0 8px; }"
+            % (FONT_FAMILY, FONT_FAMILY_CJK)
         )
         self._list.setSpacing(1)
         self._list.hide()
@@ -619,16 +632,23 @@ class SearchWindow(QFrame):
     # 回车 / 选择
     # ------------------------------------------------------------------
     def _current_key(self) -> str | None:
+        # 仅返回「真实词条」项（UserRole 非空）。空态提示/无选中项时返回 None，
+        # 这样 Enter 不会把查不到的文本(如中文"金额")硬切进详情视图。
         item = self._list.currentItem()
         if item:
-            return item.data(Qt.UserRole)
-        return self._title.text().strip() or None
+            key = item.data(Qt.UserRole)
+            return key if key else None   # 空态项 UserRole='' -> 返回 None
+        return None
 
     def _on_return(self):
         if self._mode == "detail":
             # 已在详情视图，Enter 无操作（避免重复切换）
             return
-        self._show_detail(self._current_key())
+        key = self._current_key()
+        if not key:
+            # 无真实词条（空输入 / 没有找到的占位项）：不切详情，保持现状。
+            return
+        self._show_detail(key)
 
     def _open_item(self, item):
         # 鼠标点击结果项同样进入详情视图

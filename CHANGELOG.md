@@ -3,7 +3,7 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [v0.7.18] - 2026-09-02
 
 ### 重构
 - **精简 MDX 解析器死代码**：移除从未被调用的 `MDX.lookup()`/`get_all()`/`key_texts()`/`build_lookup_table()`/`get_by_key_id()`。GUI 查词走 SQLite `Searcher`，索引构建走流式 `_iter_record_blocks()`，这些遗留接口（其中 `lookup` 还是线性扫描全词条）留着是隐患。

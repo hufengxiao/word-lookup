@@ -16,6 +16,7 @@ from PySide6.QtGui import (
     QCursor,
     QFont,
     QFontMetrics,
+    QGuiApplication,
     QKeyEvent,
     QLinearGradient,
     QPainter,
@@ -436,6 +437,13 @@ class SearchWindow(QFrame):
     def show_window(self):
         self._center()
         self._is_active_opacity = True
+        # 唤起前清空输入法组合上下文, 确保本次显示从干净输入文档开始
+        try:
+            im = QGuiApplication.inputMethod()
+            im.commit()
+            im.reset()
+        except Exception:
+            pass
         # 唤起浮现动画：由 0 -> 1 淡入 + 从下方 14px 微升，营造“Spotlight 浮现”感
         self.setWindowOpacity(0.0)
         self._reveal_origin = self.pos()
@@ -483,6 +491,17 @@ class SearchWindow(QFrame):
             self._refresh_opacity(force_using=True)
 
     def hide_window(self):
+        # 先强制提交并重置输入法组合(composition)状态, 再隐藏。
+        # Windows 输入法「Ctrl+A 全选后直接打中文」时, 中文是否仍处在 IME 预编辑
+        # (pre-edit) 组合态; 若不清理就 hide(), 下注 show() 找回焦点时会带着
+        # 半提交的组合文本, 中文按被裁剪的预编辑高度重排 → 只显示上半截。
+        # commit()+reset() 让预编辑上屏并清空组合上下文, 规避此问题。
+        try:
+            im = QGuiApplication.inputMethod()
+            im.commit()
+            im.reset()
+        except Exception:
+            pass
         self._stop_opacity_watch()
         if self._reveal_timer is not None:
             self._reveal_timer.stop()

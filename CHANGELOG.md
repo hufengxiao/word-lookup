@@ -3,6 +3,24 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.7.21] - 2026-09-02
+
+### 修复
+- **中文只显示上半截（在「Ctrl+A 全选后直接输中文 → 隐藏 → 显示」下必现）的真正根因**：
+  - 精确复现：逐步 backspace 删英文后输入中文，隐藏/显示正常；但 **Ctrl+A 全选替换后
+    输入中文，再隐藏/显示 → 搜索框里中文被裁(只显示半截)、空态行仍塌**。
+  - 根因不是字体（上一版 setFamilies 已修正字体的 metrics——它修了"英文全选替换"之外的
+    部分），而是 **Windows 输入法(IME)的预编辑组合(composition)状态**：Ctrl+A 全选替换
+    时中文以 IME 预编辑态进行，若在组合未上屏/未清理时用快捷键隐藏窗口，该组合上下文
+    残留，重新显示找回焦点时中文按被裁剪的预编辑高度重排 → 显示半截。
+  - 修复：`hide_window()` / `show_window()` 中先
+    `QGuiApplication.inputMethod()commit()` 再 `reset()`，强制提交预编辑文本并清空
+    输入法组合上下文，保证显示从干净输入文档开始。
+
+### 测试
+- `smoke_test.py` 新增回归：spy `QGuiApplication.inputMethod()` 的 `commit`/`reset`，
+  断言 `hide_window()`/`show_window()` 路径上必须各至少调用一次（防止未来误删该修复）。
+
 ## [v0.7.20] - 2026-09-02
 
 ### 修复

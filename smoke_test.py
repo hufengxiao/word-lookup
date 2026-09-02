@@ -15,8 +15,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 
+from unittest import mock
+
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QKeyEvent, QMouseEvent
+from PySide6.QtGui import QGuiApplication, QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication
 
 from dictionary.searcher import Searcher
@@ -210,6 +212,27 @@ def main():
     step(f"鼠标移入渐变结束 → {win.windowOpacity()}")
     assert win.windowOpacity() > 0.9, "FAIL: 复用后未恢复不透明"
     step("透明度渐变 PASS")
+
+    # 回归：隐藏/显示前必须清理输入法组合(composition)状态。
+    # Windows 输入「Ctrl+A 全选后直接打中文」会在 IME 预编辑(组合)态；若隐藏时
+    # 未 commit()+reset(), 重新显示找回焦点会带残留组合 → 中文只显示半截。
+    # 这两个调用必须真的发生在 hide_window()/show_window() 路径上。
+    _im = QGuiApplication.inputMethod()
+    calls = {"commit": 0, "reset": 0}
+    def _c():
+        calls["commit"] += 1
+        return None
+    def _r():
+        calls["reset"] += 1
+        return None
+    with mock.patch.object(_im, "commit", side_effect=_c), \
+         mock.patch.object(_im, "reset", side_effect=_r):
+        calls["commit"] = calls["reset"] = 0
+        win.hide_window()
+        win.show_window()
+    step(f"hide/show 触发 inputMethod.commit={calls['commit']} reset={calls['reset']} (均应>=1)")
+    assert calls["commit"] >= 2 and calls["reset"] >= 2, \
+        "FAIL: hide/show 未清理输入法组合状态(中文显示半截的根因), 需 commit()+reset()"
 
     # 搜索无匹配
     win._title.setText("zzzzqqqq")

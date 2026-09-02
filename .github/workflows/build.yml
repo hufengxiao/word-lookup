@@ -154,10 +154,29 @@ jobs:
           name: WordLookup-windows
           path: dist/WordLookup.exe
       # 仅 tag 推送时发布到 GitHub Release (复用 CHANGELOG 链接的 release notes)
+      - name: Extract release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          # 从 CHANGELOG.md 提取当前发布 tag 对应的说明段(## [vX] 到下个 ## [vY]),
+          # 写入 release_body.md 作为 Release body 的正文来源。
+          $tag = "${{ github.ref_name }}"
+          $cl = Get-Content -Raw -Path CHANGELOG.md
+          $pattern = "(?s)## \[[^\]]*$([regex]::Escape($tag))[^\]]*\].*?(?=^## \[|\z)"
+          $m = [regex]::Match($cl, $pattern, 'Multiline')
+          if ($m.Success -and $m.Value.Length -gt 0) {
+            $body = $m.Value.Trim()
+            Set-Content -Path release_body.md -Value $body -Encoding utf8
+            Write-Host "release body extracted: $($body.Length) chars"
+          } else {
+            Set-Content -Path release_body.md -Value "" -Encoding utf8
+            Write-Host "CHANGELOG 无 $tag 段, body 留空交给自动 notes"
+          }
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/WordLookup.exe
           generate_release_notes: true
+          body_path: release_body.md
           draft: false

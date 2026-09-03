@@ -114,12 +114,17 @@ def _ask_mdx_path():
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QFileDialog
 
-    last_dir = os.path.expanduser("~/Desktop")
+    last_dir = (os.path.expanduser("~/Desktop")
+                if os.path.isdir(os.path.expanduser("~/Desktop"))
+                else os.path.expanduser("~"))
     dlg = QFileDialog(None, "选择 MDX 词典", last_dir)
     dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
     dlg.setNameFilter("MDX 词典 (*.mdx);;所有文件 (*)")
-    # 强制用 Qt 自绘对话框（不吃 Windows 原生对话框打包后瞬闪的坑）
-    dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+    # 【v0.8.2 修复】不再强制 Qt 自绘对话框(DontUseNativeDialog)。
+    # 自绘对话框在 Windows 上浏览目录极不可用(无法切换到别处、看不到 mdx)，
+    # 且当初引入它的本意是躲开"原生对话框闪瞬"——那其实源于 QApplication
+    # 时序 bug(早已修复: 现在 bootstrap 在主循环内、QApplication 已建)。现在
+    # QApplication 顺序正确, 用原生 Windows 对话框才能正常浏览磁盘。
     dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
 
     # 确保对话框置顶并聚焦
@@ -521,6 +526,53 @@ def _cli_version_flag() -> int:
     return 0
 
 
+_CRASH_CBS: list = []  # Windows 崩溃回调持有引用(防 GC)
+
+
+def _install_crash_guard() -> None:
+    """Windows 崩溃兜底：把未捕获 Python 异常 / 原生崩溃记录进 WordLookup.log。
+
+    背景：windowed exe 无控制台，Qt 层崩溃(ACCESS_VIOLATION 等)会静默退出且不出
+    traceback，用户手上只有 log 停在 [bootstrap] ready。装两层：
+      1) sys.excepthook 抓 Qt 槽/回调里未捕获的 Python 异常
+      2) SetUnhandledExceptionFilter 抓原生崩溃, 记录异常码 + 触发地址
+    """
+    def _hook(exc_tp, exc_val, exc_tb):
+        try:
+            import traceback as _tb
+            write_log("[crash:python] "
+                      + "".join(_tb.format_exception(exc_tp, exc_val, exc_tb)))
+        except Exception:
+            pass
+    sys.excepthook = _hook
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        # 模块级容器持有 WINFUNCTYPE 回调, 防 Python GC 回收导致 filter 失效
+        _CRASH_CBS.extend([None])
+
+        @ctypes.WINFUNCTYPE(wintypes.LONG, ctypes.c_void_p)
+        def _veh(info_ptr):
+            try:
+                rec = ctypes.cast(info_ptr, ctypes.POINTER(ctypes.c_void_p))
+                code = ctypes.cast(rec[0], ctypes.POINTER(ctypes.c_ulong))[0]
+                addr = ctypes.cast(rec[1], ctypes.c_void_p).value
+                write_log(f"[crash:native] EXCEPTION_CODE=0x{code:08X} at {addr}")
+            except Exception:
+                write_log("[crash:native] unknown native exception")
+            return 1  # EXCEPTION_EXECUTE_HANDLER -> 进程照常崩溃, 但 log 已记
+
+        _CRASH_CBS[-1] = _veh
+        ctypes.windll.kernel32.SetUnhandledExceptionFilter(_veh)
+    except Exception as e:  # noqa: BLE001
+        try:
+            write_log("[crash] guard install FAILED: " + str(e))
+        except Exception:
+            pass
+
+
 def main():
     # ---- CLI 便捷参数：--version / -v ----
     # 说明: PyInstaller --windowed(console=False) 的 exe 在 Windows 下不绑定控制台,
@@ -533,6 +585,13 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Word Lookup")
     write_log("[startup] QApplication ready")
+
+    # 【v0.8.2 崩溃诊断】Qt 主层崩溃(windowed 无控制台)会在 ready 后静默退出、
+    # 不落任何 traceback。装两层兜底, 让用户在 exe 旁 WordLookup.log 能拿到
+    # 崩溃现场: ① sys.excepthook 抓回调/槽内未捕获 Python 异常; ② Windows
+    # SetUnhandledExceptionFilter 抓 ACCESS_VIOLATION 等原生崩溃并记录地址+模块。
+    if sys.platform == "win32":
+        _install_crash_guard()
 
     # ---- 单实例保护：避免重复双击导致热键/db 冲突 ----
     try:

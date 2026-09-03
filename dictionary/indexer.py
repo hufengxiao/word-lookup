@@ -44,6 +44,9 @@ class IndexBuilder:
         cur.execute("PRAGMA journal_mode=OFF")
         cur.execute("PRAGMA synchronous=OFF")
         cur.execute("PRAGMA cache_size=-200000")
+        # P1-4 构建提速：临时表/排序放内存，全程本连接独占库(构建期间无并发读者)。
+        cur.execute("PRAGMA temp_store=MEMORY")
+        cur.execute("PRAGMA locking_mode=EXCLUSIVE")
         cur.execute(
             """CREATE TABLE words(
                 id INTEGER PRIMARY KEY,

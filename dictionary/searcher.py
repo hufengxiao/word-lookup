@@ -15,6 +15,7 @@
 """
 import os
 import sqlite3
+from collections import OrderedDict
 
 MAX_SUGGEST = 20  # 联想列表上限
 
@@ -29,6 +30,10 @@ class Searcher:
         self._conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         self._conn.row_factory = sqlite3.Row
         self._count = self._conn.execute("SELECT COUNT(*) FROM words").fetchone()[0]
+        # P0-2b：脱敏 lookup 结果 LRU 缓存(手动 OrderedDict, 避免 lru_cache 在方法上
+        # 持有 self 引用的泄漏)。容量 128, 超限弹最旧。
+        self._lookup_cache = OrderedDict()
+        self._lookup_cache_max = 128
 
     @property
     def count(self) -> int:
@@ -91,11 +96,17 @@ class Searcher:
         return out[:limit]
 
     def lookup(self, key: str):
-        """精确查词条正文 HTML，自动跟随 @@@LINK 重定向(复数/派生→主词条)。
+        """给定 key 精确查找词条正文 HTML，跟随 @@@LINK 重定向(复数/派生→主词条)。
 
         key 大小写不敏感。返回 (display_key, html) 或 (key, None)。
+
+        P0-2 性能：结果 LRU 缓存(容量 128)缓存最近查过的词条，来回切换
+        同一词条不重复查库。key 本身作缓存键(大小写不同产生重复项无碍正确性)。
         """
         target = key.strip()
+        cached = self._lookup_cache.get(target)
+        if cached is not None:
+            return cached
         seen = set()
         while len(seen) < 16:
             t = target.lower()
@@ -107,13 +118,27 @@ class Searcher:
                     "SELECT key, html FROM words WHERE key_lower = ?", (t,)
                 ).fetchone()
             if not row:
-                return (key, None)
+                result = (key, None)
+                self._populate_cache(target, result)
+                return result
             html = row["html"]
             if html and html.lstrip().startswith("@@@LINK="):
                 target = html.split("@@@LINK=", 1)[1].strip()
                 continue
-            return (row["key"], html)
-        return (key, None)
+            result = (row["key"], html)
+            self._populate_cache(target, result)
+            return result
+        result = (key, None)
+        self._populate_cache(target, result)
+        return result
+
+    def _populate_cache(self, target: str, result):
+        """把 (target -> result) 写入 LRU 缓存；超容弹最旧。"""
+        cache = self._lookup_cache
+        if len(cache) >= self._lookup_cache_max:
+            cache.popitem(last=False)
+        cache[target] = result
+        cache.move_to_end(target)
 
     def key_exists(self, key: str) -> bool:
         with self._lock:

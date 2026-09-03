@@ -4,7 +4,11 @@
     general → "adj. 普遍的 · n. 将军"
     run     → "v. 跑 / n. 跑动"
 """
+import threading
 from html.parser import HTMLParser
+
+# P0-3 性能：线程本地复用 _Ext 实例(构建期逐词条调用, 避免 31 万次 parser 构造)。
+_thread_local = threading.local()
 
 _POS_ABBR = {
     "noun": "n", "verb": "v", "adjective": "adj", "adverb": "adv",
@@ -24,15 +28,19 @@ _MAX_PER_POS = 1   # 每词性取最新一条释义（保持简介、避免例�
 _MAX_GROUPS = 3
 _MAX_CHARS = 115
 
+# P2 性能：合并成单个"输入名 → 规范名"查找表(完整名自映射 + 别名→规范)，
+# _norm_pos 精确命中走一次 O(1) get，省去两次 dict 查询。
+_NORM_LOOKUP = {k: k for k in _POS_ABBR}
+_NORM_LOOKUP.update(_ALIAS)
+
 
 def _norm_pos(raw):
     s = "".join(ch for ch in raw.lower() if ch.isalpha())
     if not s:
         return ""
-    if s in _POS_ABBR:      # 完整规范名 noun/verb/...
-        return s
-    if s in _ALIAS:         # 缩写别名 n/v/adj/...
-        return _ALIAS[s]
+    hit = _NORM_LOOKUP.get(s)
+    if hit:
+        return hit
     # 兜底: 输入可能是带额外后缀/拼写变体(如 "nouns"/"adverbial")。
     # 只接受"前缀是某个完整规范词性名"的情况, 并且取最长匹配, 避免短规范词
     # (如 "nounn" 与 "noun") 命中顺序不定造成歧义(长按优先, 确定性)。
@@ -56,6 +64,10 @@ def _short_chn(raw):
 class _Ext(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
+        self.reset_state()
+
+    def reset_state(self):
+        """重置全部解析状态（P0-3 性能：让 parser 实例可反复 feed 复用）。"""
         self.pos = ""
         self.groups = {}            # pos -> [gloss,...]
         self.order = []
@@ -132,7 +144,13 @@ class _Ext(HTMLParser):
 
 
 def extract_summary(html: str, max_chars: int = _MAX_CHARS) -> str:
-    p = _Ext()
+    # P0-3：复用本线程上一次的 parser 实例(reset 后反复 feed)，避免逐词条构造。
+    p = getattr(_thread_local, "_ext", None)
+    if p is None:
+        p = _Ext()
+        _thread_local._ext = p
+    p.reset()          # 清 HTMLParser 内部 buffer/node 状态
+    p.reset_state()    # 清词条业务解析状态(pos/groups/order/...)
     try:
         p.feed(html)
         p.close()

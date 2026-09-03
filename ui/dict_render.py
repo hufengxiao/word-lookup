@@ -14,7 +14,33 @@ QTextDocument 友好的、纯块级/内联样式的 HTML：
   - 习语/搭配 次级块
   - 剔除 img/link/script/事件/音频
 """
+import html as _h
+import re as _re
+from functools import lru_cache
 from html.parser import HTMLParser
+
+# P0-2a 性能：详情渲染用的正则全部模块级预编译，避免每次渲染时重新编译。
+_RE_TAG = _re.compile(r"<[^>]+>")
+_RE_WS = _re.compile(r"\s+")
+_RE_SCRIPT = _re.compile(r"<script\b[^>]*>.*?</script>", _re.I | _re.S)
+_RE_STYLE = _re.compile(r"<style\b[^>]*>.*?</style>", _re.I | _re.S)
+_RE_LINK = _re.compile(r"<link\b[^>]*>", _re.I)
+_RE_AUDIO = _re.compile(r"<audio\b[^>]*>.*?</audio>", _re.I | _re.S)
+_RE_EVENTS = _re.compile(
+    r"\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", _re.I)
+_RE_IMG = _re.compile(r"<img\b[^>]*>", _re.I)
+_RE_GLOSS = _re.compile(
+    r'<span\s+class=["\'][^"\']*\bgloss\b[^"\']*["\'][^>]*>(.*?)</span>',
+    _re.I | _re.S)
+_RE_EX_UL = _re.compile(
+    r"<ul\b[^>]*\bclass\s*=\s*[\"'][^\"']*examples[^\"']*[\"'][^>]*>(.*?)</ul>",
+    _re.I | _re.S)
+_RE_LI = _re.compile(r"<li[^>]*>(.*?)</li>", _re.I | _re.S)
+_RE_SPAN_EN = _re.compile(
+    r"<span\s+class=[\"'](?:unx|x)[\"']>(.*?)</span>", _re.I | _re.S)
+_RE_CN_CONTAINER = _re.compile(
+    r"<(?:xT|aT|oT)>.*?<chn>(.*?)</chn>.*?</(?:xT|aT|oT)>", _re.I | _re.S)
+_RE_PHON = _re.compile(r"/[^/]+/")
 
 # 语义上下文 -> 该上下文内的文本归属 kind
 _SEM = {
@@ -136,6 +162,7 @@ class DictHtmlParser(HTMLParser):
         return out
 
 
+@lru_cache(maxsize=64)
 def convert_dict_html(html: str) -> str:
     p = DictHtmlParser()
     try:
@@ -254,38 +281,32 @@ def _extract_examples(html: str) -> list:
     否则像 General American 这种会把词性/音标/释义/Culture 大段硬凑成一条超长
     “例句”，渲染成 EXAMPLE 下一大坨连续文字，非常难读）。
     """
-    import html as _h
-    import re
 
     out = []
     # 只认 class 值含 "examples" 的 <ul>；没有则 return []（不再退回整个 html 当 body）。
-    m = re.search(
-        r"<ul\b[^>]*\bclass\s*=\s*[\"'][^\"']*examples[^\"']*[\"'][^>]*>(.*?)</ul>",
-        html, re.I | re.S)
+    m = _RE_EX_UL.search(html)
     if not m:
         return []
     body = m.group(1)
 
     def _text(s: str) -> str:
-        s = re.sub(r"<[^>]+>", " ", s)
-        return _h.unescape(re.sub(r"\s+", " ", s)).strip()
+        s = _RE_TAG.sub(" ", s)
+        return _h.unescape(_RE_WS.sub(" ", s)).strip()
 
-    for li in re.findall(r"<li[^>]*>(.*?)</li>", body, re.I | re.S):
+    for li in _RE_LI.findall(body):
         en = ""
         # 英文：<span class="x"> 或 <span class="unx"> 的内容（优先保内层，去掉嵌套换标签）
-        for cls in ("unx", "x"):
-            mm = re.search(r'<span\s+class=[\'"]' + cls + r'[\'"]>(.*?)</span>', li, re.I | re.S)
-            if mm:
-                en = _text_preserve_gloss(mm.group(1))
-                break
+        m_en = _RE_SPAN_EN.search(li)
+        if m_en:
+            en = _text_preserve_gloss(m_en.group(1))
         if not en:
             # 退化为整个 li
             en = _text_preserve_gloss(li)
         # 中文：<xT><chn>..</chn></xT> / <aT><chn>..</chn></aT> / <oT><chn>..</chn></oT>
         # (OALD10 例句翻译可能用 xT / aT / oT 三种容器, 都认)
         cn = ""
-        for m in re.finditer(r'<(xT|aT|oT)>.*?<chn>(.*?)</chn>.*?</\1>', li, re.I | re.S):
-            cn = _text_cn(m.group(2))
+        for m in _RE_CN_CONTAINER.finditer(li):
+            cn = _text_cn(m.group(1))
             if cn:
                 break
         if en or cn:
@@ -295,58 +316,48 @@ def _extract_examples(html: str) -> list:
 
 def _text_preserve_gloss(s: str):
     """去标签但保留 gloss/collocation 作为内联引注（换成引号内嵌）。"""
-    import html as _h
-    import re
-    s = re.sub(r'<span\s+class=["\'][^"\']*\bgloss\b[^"\']*["\'][^>]*>(.*?)</span>',
-               lambda m: " (" + _h.unescape(re.sub(r"<[^>]+>", "", m.group(1))) + ")",
-               s, flags=re.I | re.S)
-    return _h.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", s))).strip()
+    s = _RE_GLOSS.sub(
+        lambda m: " (" + _h.unescape(_RE_TAG.sub("", m.group(1))) + ")", s)
+    return _h.unescape(_RE_WS.sub(" ", _RE_TAG.sub("", s))).strip()
 
 
 def _text_cn(s: str) -> str:
-    import html as _h
-    import re
-    s = re.sub(r"<[^>]+>", "", s)
-    return _h.unescape(re.sub(r"\s+", " ", s)).strip()
+    s = _RE_TAG.sub("", s)
+    return _h.unescape(_RE_WS.sub(" ", s)).strip()
 
 
 def _strip_tags_except(s: str, keep: set):
     """去所有标签，但保留 keep 内标签的内容（如 gloss/cl 内联）。"""
-    import html as _h
-    import re
     def _repl(m):
         tag = m.group(0).lower()
         if any(k in tag for k in keep):
             return m.group(0)
         return " "
-    return _h.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", _repl, s))).strip()
+    return _h.unescape(_RE_WS.sub(" ", _RE_TAG.sub(_repl, s))).strip()
 
 
 def _split_phon(phons):
     """拆开连续 /.../.../ 的 IPA, 去重, 返回列表。"""
-    import re
     out = []
     for ph in phons:
-        for m in re.findall(r"/[^/]+/", ph):
+        for m in _RE_PHON.findall(ph):
             if m not in out:
                 out.append(m)
     return out
 
 
 def _esc(s: str) -> str:
-    import html as _h
     return _h.escape(s)
 
 
 def _fallback(html: str) -> str:
     """解析失败时退化为去链接/脚本/图后的原样 HTML。"""
-    import re
-    h = re.sub(r"<script\b[^>]*>.*?</script>", "", html, flags=re.I | re.S)
-    h = re.sub(r"<style\b[^>]*>.*?</style>", "", h, flags=re.I | re.S)
-    h = re.sub(r"<link\b[^>]*>", "", h, flags=re.I)
-    h = re.sub(r"<audio\b[^>]*>.*?</audio>", "", h, flags=re.I | re.S)
-    h = re.sub(r"\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", "", h, flags=re.I)
-    h = re.sub(r"<img\b[^>]*>", "", h, flags=re.I)
+    h = _RE_SCRIPT.sub("", html)
+    h = _RE_STYLE.sub("", h)
+    h = _RE_LINK.sub("", h)
+    h = _RE_AUDIO.sub("", h)
+    h = _RE_EVENTS.sub("", h)
+    h = _RE_IMG.sub("", h)
     # 兜底也套上统一深色样式(而非纯 <!DOCTYPE>+原文), 否则未知结构词条在 QTextDocument
     # 里会用默认浅色/无排版, 视觉上"完全没样式"。此处即使 class 未全对齐, 至少深色底+基础文字可读。
     return _HEADER + "<html><head>" + _STYLE + "</head><body>" + h + "</body></html>"

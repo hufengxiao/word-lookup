@@ -125,6 +125,14 @@ class _ResultDelegate(QStyledItemDelegate):
         self._key_off = QColor("#FFFFFF")
         self._sum_on = QColor(255, 255, 255, 220)
         self._sum_off = QColor(CLR_TEXT_SECONDARY)
+        # P0-1 性能：paint() 热路径对象预构建，避免每帧新建 QFont/QColor/QRect
+        self._ic_font = QFont(FONT_FAMILY, 9, QFont.DemiBold)
+        self._hint_font = QFont("Segoe UI", 9, QFont.Normal)
+        self._icon_bg_on = QColor(255, 255, 255, 46)
+        self._icon_bg_off = QColor(255, 255, 255, 20)
+        self._icon_fg = QColor(255, 255, 255, 210)
+        self._hint_bg = QColor(0, 0, 0, 66)
+        self._hint_fg = QColor(255, 255, 255, 195)
 
     @staticmethod
     def _make_font(pt: int, weight: QFont.Weight):
@@ -165,11 +173,10 @@ class _ResultDelegate(QStyledItemDelegate):
         icon_x = r.left() + 8
         icon_size = 22
         icon_cy = r.center().y()
-        painter.setBrush(QColor(255, 255, 255, 46) if selected else QColor(255, 255, 255, 20))
+        painter.setBrush(self._icon_bg_on if selected else self._icon_bg_off)
         painter.drawRoundedRect(QRect(icon_x, icon_cy - icon_size // 2, icon_size, icon_size), 6, 6)
-        ic_font = QFont(FONT_FAMILY, 9, QFont.DemiBold)
-        painter.setFont(ic_font)
-        painter.setPen(QColor(255, 255, 255, 210))
+        painter.setFont(self._ic_font)
+        painter.setPen(self._icon_fg)
         painter.drawText(QRect(icon_x, icon_cy - icon_size // 2, icon_size, icon_size),
                          Qt.AlignCenter, row_type)
 
@@ -187,14 +194,13 @@ class _ResultDelegate(QStyledItemDelegate):
         hx = None
         if selected:
             hint = "Enter"
-            hint_font = QFont("Segoe UI", 9, QFont.Normal)
-            painter.setFont(hint_font)
+            painter.setFont(self._hint_font)
             hw = painter.fontMetrics().horizontalAdvance("Enter") + 16
             hx = r.right() - hw
             painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(0, 0, 0, 66))
+            painter.setBrush(self._hint_bg)
             painter.drawRoundedRect(QRect(hx, r.center().y() - 10, hw, 20), 10, 10)
-            painter.setPen(QColor(255, 255, 255, 195))
+            painter.setPen(self._hint_fg)
             painter.drawText(QRect(hx, r.center().y() - 10, hw, 20), Qt.AlignCenter, hint)
 
         # 释义（在词头右侧、Enter 徽标左侧之间）
@@ -212,11 +218,16 @@ class _ResultDelegate(QStyledItemDelegate):
         """从释义预览解析词性缩写，作为类型图标内容。"""
         if not summ:
             return key[0].upper() if key else "?"
-        head = summ.split()[0].lstrip(",;").strip().lower() if summ.split() else ""
-        aliases = {"n": "n", "noun": "n", "v": "v", "verb": "v", "adj": "adj",
-                   "adjective": "adj", "adv": "adv", "adverb": "adv", "prep": "prep",
-                   "pron": "pron", "conj": "conj", "interj": "int", "phr": "phr"}
-        return aliases.get(head, key[0].upper() if key else "?")
+        parts = summ.split()
+        head = parts[0].lstrip(",;").strip().lower()
+        # P2 性能：每次 paint 都调用，词性查表用类级常量(不逐帧重建 dict)。
+        return _ResultDelegate._ROW_ALIASES.get(head, key[0].upper() if key else "?")
+
+    # 词性缩写参考表（类级常量，避免每帧 paint 里重建 dict）
+    _ROW_ALIASES = {
+        "n": "n", "noun": "n", "v": "v", "verb": "v", "adj": "adj",
+        "adjective": "adj", "adv": "adv", "adverb": "adv", "prep": "prep",
+        "pron": "pron", "conj": "conj", "interj": "int", "phr": "phr"}
 
 
 class SearchWindow(QFrame):

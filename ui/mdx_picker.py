@@ -108,7 +108,10 @@ class MdxPickerDialog(QDialog):
         lay.addLayout(info_row)
         lay.addWidget(buttons)
         self.setLayout(lay)
-        self._filter_box.setCurrentIndex(1)  # 默认「所有文件」: 避免看不到任何文件; 要只看词典再切 mdx
+        # 默认只看 .mdx(选择器核心用途)。下拉可切「所有文件」。
+        self._filter_box.setCurrentIndex(0)
+        # setCurrentIndex(0) 初始即 0 可能不触发信号, 显式初始化过滤状态
+        self._on_filter(0)
         self._refresh()
 
     # ---- 目录导航 ----
@@ -135,20 +138,23 @@ class MdxPickerDialog(QDialog):
             it.setData(Qt.ItemDataRole.UserRole, ("up", parent))
             self._list.addItem(it)
 
-        sub, files = _dirs_files(cur, self._only_mdx)
+        # 若当前在「只看 .mdx」过滤下该目录没有任何 .mdx 文件，自动退回显示
+        # 所有文件并提示——避免“默认 .mdx 时目录里没词典就一片空白”的困惑。
+        only = self._only_mdx
+        sub, files = _dirs_files(cur, only)
+        if only and not files:
+            sub, files = _dirs_files(cur, False)
+            self._status.setText(f"本目录没有 .mdx，已显示全部文件 · 当前: {cur}")
+        else:
+            self._status.setText(f"{len(sub)} 个目录 · {len(files)} 个文件    当前: {cur}")
         for n in sub:
-            it = QListWidgetItem("\U0001F4C1 " + n)  # 📁
+            it = QListWidgetItem("\U0001F4C1 " + str(n))  # 📁
             it.setData(Qt.ItemDataRole.UserRole, ("dir", os.path.join(cur, n)))
             self._list.addItem(it)
         for f in files:
             it = QListWidgetItem("   " + f)
             it.setData(Qt.ItemDataRole.UserRole, ("file", os.path.join(cur, f)))
             self._list.addItem(it)
-
-        if not sub and not files:
-            self._status.setText("此目录为空")
-        else:
-            self._status.setText(f"{len(sub)} 个目录 · {len(files)} 个文件    当前: {cur}")
 
     def _on_click(self, item: QListWidgetItem):
         kind, path = item.data(Qt.ItemDataRole.UserRole)

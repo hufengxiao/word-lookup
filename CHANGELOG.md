@@ -3,6 +3,18 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.8.16] - 2026-09-04
+
+### ⚡ Phrasal Verbs 列表变可点跳转
+v0.8.15 把主词条底部的"短语动词目录"(run across / run after…)渲染出来了，但你问"这些怎么没释义"——
+原因是牛津把每个短语动词做成**独立词条**(run-across 在库里其实是 `@@@LINK=run across` 重定向)，`run` 主词条里只有指向它们的链接。
+
+现在这个列表**每一项都可点击**：
+- 点 `run across` → 立即跳到它自己的完整词条：`run across` `*phrasal verb*` 释义 + 中文
+- 复用牛津的 `@@@LINK` 重定向机制(如 run-across → run across)，保证连字符/带空格形式都能命中
+- 底部加了"点击任一短语查看其完整词条"提示
+- 用 `lookup:` 自定义协议 + URL 编码(空格安全)，由详情视图拦截响应，不干扰外部链接
+
 ## [v0.8.15] - 2026-09-04
 
 ### 🆕 详情页：习语区 + 短语动词区分离开，词组一律带释义

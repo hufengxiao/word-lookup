@@ -188,3 +188,22 @@ def test_idioms_section_renders_head_and_def():
     # 短语动词链接列表
     assert "run across" in out
     assert "Phrasal Verbs" in out
+
+
+def test_phrasal_verbs_render_as_lookup_links():
+    """短语动词区每项渲染成 lookup: 协议的可点链接, 点击能跳转到其独立词条。"""
+    raw = (
+        "<div class='entry'><h1 class='headword'>run</h1>"
+        "<span class='pos'>verb</span>"
+        "<aside class='phrasal_verb_links'><span class='unbox'>Phrasal Verbs</span>"
+        "<ul class='pvrefs'>"
+        "<li><span class='xh'>run across</span></li>"
+        "<li><span class='xh'>run away from</span></li>"
+        "</ul></aside>"
+        "</div>"
+    )
+    out = convert_dict_html(raw)
+    assert "Phrasal Verbs" in out
+    # 每项必须是带 lookup: 协议的链接, 且词被 URL 编码到 href
+    assert "href='lookup:run%20across'" in out or "href=\"lookup:run%20across\"" in out
+    assert "run away from" in out

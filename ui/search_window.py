@@ -361,6 +361,9 @@ class SearchWindow(QFrame):
                     % CLR_CARD
                 )
         self._detail_view.setOpenExternalLinks(True)
+        # 拦截词典详情里的内部跳转链接(lookup:// 协议), 如 Phrasal Verbs 短语 →
+        # 直接在当前详情视图切换显示该短语自己的完整词条。
+        self._detail_view.anchorClicked.connect(self._on_detail_anchor)
         self._detail_view.hide()
         lay.addWidget(self._detail_view, 1)
 
@@ -653,6 +656,15 @@ class SearchWindow(QFrame):
         self._detail_view.show()
         self._detail_view.verticalScrollBar().setValue(0)
         self._animate_height(H_DETAIL)
+
+    def _on_detail_anchor(self, url):
+        """响应详情页内 lookup:// 链接(如 Phrasal Verbs 短语) → 跳转到目标词条。"""
+        if not url or url.scheme() != "lookup":
+            return  # 外部链接由 setOpenExternalLinks 处理
+        # QUrl.path() 已把 %20 等解码为空格, 直接取词
+        word = url.path().lstrip("/")
+        if word:
+            self._show_detail(word)
 
     def _set_detail_size(self):
         self._expanded = True

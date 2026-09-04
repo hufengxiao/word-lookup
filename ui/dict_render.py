@@ -470,10 +470,20 @@ def _render_phrasal(html: str) -> str:
             heads.append(t)
     if not heads:
         return ""
+    from urllib.parse import quote as _quote
     out = ["<div class='seclabel'>Phrasal Verbs</div>", "<div class='exlist'>"]
     for h in heads:
-        out.append(f"<div class='ex'><span class='excf'>{_esc(h)}</span></div>")
+        # 交叉链接：每项跳转到该短语自己的完整词条(点击由 search_window 拦截 lookup: 协议)。
+        # 用 "lookup:run%20across" 形式(QUrl.path() 可直接取到解码后的词), 避免 "//" 把词当 host。
+        href = "lookup:" + _quote(h)
+        out.append(
+            f"<div class='ex'><a href='{href}' style='color:{_CLR_ACCENT};"
+            f"text-decoration:underline;'>{_esc(h)}</a></div>"
+        )
     out.append("</div>")
+    out.append("<div class='seclabel' style='font-size:10px;color:#6E6E73;"
+               "font-weight:500;letter-spacing:0.3px;margin-top:2px;'>"
+               "点击任一短语查看其完整词条</div>")
     return "\n".join(out)
 
 

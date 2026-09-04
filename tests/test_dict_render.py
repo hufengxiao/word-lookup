@@ -117,3 +117,20 @@ def test_example_collocation_prefix_shows():
            "<span class='x'>He left his post.</span><xT><chn>他离职了。</chn></xT></li></ul></li></div>")
     txt = _render_text(raw)
     assert "abandon somebody" in txt
+
+
+def test_sense_phrase_head_shows_before_def():
+    """义项短语头(<span class="cf"> 在 sense 内 def 之前, 仿 Oxford 短语动词专条):
+    take something 是"义项短语头", 应显示在释义正上方(而非被丢弃)。"""
+    raw = ("<div class='entry'><h1 class='headword'>take</h1><span class='pos'>verb</span>"
+           "<li class='sense'><span class='cf'>take something</span>"
+           "<span class='def'>to use a form of transport</span><defT><chn>乘坐</chn></defT>"
+           "<ul class='examples'><li><span class='x'>We took the train.</span>"
+           "<xT><chn>我们坐了火车。</chn></xT></li></ul></li></div>")
+    out = convert_dict_html(raw)
+    # 短语头必须出现在释义文本之前的那一行
+    i_ph = out.find("take something")
+    i_def = out.find("to use a form of transport")
+    assert 0 < i_ph < i_def, "义项短语头应显示在释义之前"
+    assert "phr" in out, "应使用短语头样式块"
+    assert "phrtxt" in out

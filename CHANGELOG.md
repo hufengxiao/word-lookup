@@ -3,6 +3,22 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.8.13] - 2026-09-04
+
+### 🔤 详情页：词组短语头跟其释义（take something → 有释义）
+牛津高阶里像 `take something` 这类，其实是一个**独立义项**：短语头(label)后紧跟
+英文释义 + 中文释义 + 例句。之前这类"短语专条"的义项短语头被丢弃，用户只看到
+释义却不知道它对应的用法短语。本次：
+
+- 识别 sense 内、释义之前的 `<span class=cf>`(义项短语头, 如 `take something` /
+  `take somebody/something + adv./prep.` / `take on something (informal)`)，
+  **显示在释义正上方**（蓝色斜体高亮），仿纸质词典的短语专条排印。
+- 与例句搭配前缀(cf in examples)区分：例句里仍是"搭配前缀+例句"分行, 不混淆。
+- 真实 take 词条冒烟: 提取到 30+ 个义项短语头, 各自紧跟释义, 无错位。
+
+### 测试
+- 编译 / ruff / pytest(23) 全绿; 新增 1 条回归(短语头在释义前)。
+
 ## [v0.8.12] - 2026-09-04
 
 ### 🆒 详情页：搭配短语与例句分行

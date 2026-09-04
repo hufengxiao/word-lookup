@@ -69,6 +69,10 @@ class DictHtmlParser(HTMLParser):
         self._in_exul = 0         # 例句 <ul class=examples> 深度 (语义 on/off)
         self._ex_li = None        # 当前例句 li 缓冲 {"cf","en","cn"}
         self._ex_seg = None       # 当前例句 li 文本阶段: "cf"/"en"/"cn"
+        # ── 义项短语头: sense 内 def 之前的 <span class=cf> 短语(如 take something) ──
+        self.sense_phrases = []   # [1-based seq] -> 短语文本, 与 defs/sense_idx 对齐
+        self._cf_pending = False  # 已见到 cf 但尚未见到紧跟的 def
+        self._cf_buf = ""         # 待绑定短语头的文本缓冲
 
     def _class(self, attrs):
         for k, v in attrs:
@@ -123,11 +127,25 @@ class DictHtmlParser(HTMLParser):
             cls = set(self._class(attrs).split())
             if tag == "span" and "cf" in cls:
                 self._ex_seg = "cf"
+                self._cf_pending = False  # 例句内 cf 不当作义项短语头
             elif tag == "span" and (cls & {"x", "unx"}):
                 self._ex_seg = "en"
-            elif tag in ("xt", "at", "ot") or (tag == "sspan" and "chn" in cls):
-                # 中文容器(xt/at/ot 直接包 chn; 或 span.chn)
+            elif tag in ("xt", "at", "ot") or (tag == "span" and "chn" in cls):
                 self._ex_seg = "cn"
+        else:
+            # ---- 义项短语头: sense 内、def 之前的 <span class=cf> (如 take something) ----
+            cls = set(self._class(attrs).split())
+            if tag == "span" and "cf" in cls:
+                self._cf_pending = True
+                self._cf_buf = ""
+            elif tag == "span" and ("def" in cls or "defT" in cls):
+                if self._cf_pending and self.sense_idx > 0:
+                    _ph = " ".join(self._cf_buf.split())
+                    if _ph:
+                        while len(self.sense_phrases) <= self.sense_idx:
+                            self.sense_phrases.append(None)
+                        self.sense_phrases[self.sense_idx] = _ph
+                self._cf_pending = False  # 绑定结束(或丢弃)
         # 子义项小标题 <h2 class="shcut">（如 manage 管理 / provide 提供 / liquid 液体）
         # 整棵子树(含内层 <shcutT><chn>中文</chn>)都不是一条独立释义, 必须整块跳过,
         # 否则其中文 <chn> 会被当成“定义中文”并污染到上一条/下一条释义的中文行。
@@ -167,9 +185,13 @@ class DictHtmlParser(HTMLParser):
                 break
 
     def handle_data(self, data):
-        # 例句容器内: 文本按当前阶段收进例句缓冲(不污染语义流)
+        # 例句容器内: 文本按当前例句段收进例句(不污染语义流)
         if self._in_exul and self._ex_li is not None and self._ex_seg:
             self._ex_li[self._ex_seg] += data
+            return
+        # 义项短语头缓冲: 在 def 前的 <span class=cf> 内收文本(不进语义流)
+        if self._cf_pending:
+            self._cf_buf += data
             return
         if self._skip or self._ex_depth or getattr(self, "_shcut_skip", 0) or not self._tag_stack:
             return
@@ -291,6 +313,10 @@ def convert_dict_html(html: str) -> str:
                 if not d and not c:
                     continue
                 parts.append("<div class='sense'>")
+                # 义项短语头(如 take something): 释义正上方醒目小斜体
+                _ph = p.sense_phrases[cur_no] if cur_no < len(p.sense_phrases) else None
+                if _ph:
+                    parts.append(f"<div class='phr'><span class='phrtxt'>{_esc(_ph)}</span></div>")
                 parts.append(f"<span class='sensenum'>{i}.</span>")
                 if d:
                     parts.append(f"<span class='def'>{_esc(d)}</span>")
@@ -460,6 +486,8 @@ span.phon{{color:{_CLR_SECONDARY};font-size:15px;}}
 span.sep{{color:{_CLR_HAIR};margin:0 8px;}}
 div.possep{{border-top:1px solid {_CLR_HAIR};margin:18px 0 6px;padding-top:14px;}}
 div.sense{{margin:0 0 15px;padding-left:2px;}}
+div.phr{{margin:4px 0 2px;}}
+span.phrtxt{{color:{_CLR_ACCENT};font-style:italic;font-weight:700;font-size:15px;}}
 span.sensenum{{color:{_CLR_ACCENT};font-weight:700;margin-right:8px;font-size:16px;}}
 span.def{{color:#FFFFFF;display:inline;font-size:16px;}}
 span.chn{{color:{_CLR_CJK_DEF};font-weight:550;font-size:15.5px;display:inline;}}

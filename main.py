@@ -108,35 +108,38 @@ def find_existing_db(argv) -> str | None:
 def _ask_mdx_path():
     """弹窗让用户选择 .mdx 词典文件。返回路径或 None。
 
-    注意：用*实例化*的 QFileDialog（非静态方法）+ Qt 自绘对话框，
-    避免 Windows 原生对话框在 PyInstaller 打包环境下瞬间消失的问题。
+    v0.8.3-diagnostic: 在 QFileDialog 每个关键调用前后写 log, 以便定位原生
+    对话框(ACCESS_VIOLATION 0xC0000005)在 Windows 上随机崩的真正触发点。
+    行为不变; 仅增加诊断埋点。
     """
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QFileDialog
 
+    write_log("[ask] _ask_mdx_path enter")
+
     last_dir = (os.path.expanduser("~/Desktop")
                 if os.path.isdir(os.path.expanduser("~/Desktop"))
                 else os.path.expanduser("~"))
+    write_log(f"[ask] last_dir={last_dir}")
     dlg = QFileDialog(None, "选择 MDX 词典", last_dir)
+    write_log("[ask] QFileDialog constructed")
     dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
     dlg.setNameFilter("MDX 词典 (*.mdx);;所有文件 (*)")
-    # 【v0.8.2 修复】不再强制 Qt 自绘对话框(DontUseNativeDialog)。
-    # 自绘对话框在 Windows 上浏览目录极不可用(无法切换到别处、看不到 mdx)，
-    # 且当初引入它的本意是躲开"原生对话框闪瞬"——那其实源于 QApplication
-    # 时序 bug(早已修复: 现在 bootstrap 在主循环内、QApplication 已建)。现在
-    # QApplication 顺序正确, 用原生 Windows 对话框才能正常浏览磁盘。
+    write_log("[ask] setFileMode/NameFilter done")
     dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
-
-    # 确保对话框置顶并聚焦
     dlg.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+    write_log("[ask] modality/flags set")
     dlg.show()
     dlg.raise_()
     dlg.activateWindow()
     QApplication.processEvents()
-
+    write_log("[ask] shown+focus, 即将 exec()")
     state = dlg.exec()  # 阻塞直到用户选定/取消
+    write_log(f"[ask] exec() returned state={state}")
     if state and dlg.selectedFiles():
+        write_log("[ask] file chosen")
         return dlg.selectedFiles()[0]
+    write_log("[ask] no file selected (None)")
     return None
 
 
@@ -555,11 +558,27 @@ def _install_crash_guard() -> None:
 
         @ctypes.WINFUNCTYPE(wintypes.LONG, ctypes.c_void_p)
         def _veh(info_ptr):
+            # *ExceptionRecord -> {ExceptionCode, ExceptionAddress}
             try:
-                rec = ctypes.cast(info_ptr, ctypes.POINTER(ctypes.c_void_p))
-                code = ctypes.cast(rec[0], ctypes.POINTER(ctypes.c_ulong))[0]
-                addr = ctypes.cast(rec[1], ctypes.c_void_p).value
-                write_log(f"[crash:native] EXCEPTION_CODE=0x{code:08X} at {addr}")
+                import ctypes as _c
+                rec = _c.cast(info_ptr, _c.POINTER(_c.c_void_p))
+                code = _c.cast(rec[0], _c.POINTER(_c.c_ulong))[0]
+                addr = _c.cast(rec[1], _c.c_void_p).value
+                line = f"[crash:native] EXCEPTION_CODE=0x{code:08X} at 0x{(addr or 0):X}"
+                # 尝试反解: 该地址落在哪个已加载模块(用于判断是否 Qt 原生/COM 层)
+                try:
+                    h = _c.c_void_p(0)
+                    ok = _c.windll.kernel32.GetModuleHandleExW(
+                        0x00000004,  # GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                        _c.cast(_c.c_void_p(addr), _c.c_void_p),
+                        _c.byref(h))
+                    if ok and h.value:
+                        buf = _c.create_unicode_buffer(260)
+                        _c.windll.kernel32.GetModuleFileNameW(h, buf, 260)
+                        line += f"  [mod={buf.value}]"
+                except Exception:
+                    pass
+                write_log(line)
             except Exception:
                 write_log("[crash:native] unknown native exception")
             return 1  # EXCEPTION_EXECUTE_HANDLER -> 进程照常崩溃, 但 log 已记

@@ -3,6 +3,22 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.8.3] - 2026-09-03 (诊断版)
+
+### 🔬 诊断：定位「首次打开原生层随机崩溃」的真凶
+
+`v0.8.2` 把文件对话框改回原生后，用户在 Windows 上遇到**随机 `0xC0000005`
+(ACCESS_VIOLATION)**：原生 `QFileDialog` 有时能弹、有时一弹就静默崩（无任何
+日志堆栈）。本版只加诊断不改行为：
+
+- **文件对话框内部逐行打点**：`_ask_mdx_path` 在确定弹框的每个关键调用前后都写
+  `[ask] ...` 到 log —— 崩溃后能精确看到「崩到构造 / set / show / exec 哪一步」。
+- **崩溃探照灯升级**：原生崩溃地址改为**十六进制 + 反解所在 DLL 模块名**
+  (如 `Qt6Widgets.dll` / `comdlg32.dll` 等)，直接判断是否对话框/COM 层崩溃。
+
+导入方式与 v0.8.2 相同。若再崩，请把 `WordLookup.log` 发回，日志里的
+`[ask]` 断点 + `[crash:native] ... [mod=xxx.dll]` 组合即可一锤定位。
+
 ## [v0.8.2] - 2026-09-03
 
 ### 🐞 Bug 修复（首次选词典 + 首次打开体验）

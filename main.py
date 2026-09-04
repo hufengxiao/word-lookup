@@ -108,38 +108,18 @@ def find_existing_db(argv) -> str | None:
 def _ask_mdx_path():
     """弹窗让用户选择 .mdx 词典文件。返回路径或 None。
 
-    v0.8.3-diagnostic: 在 QFileDialog 每个关键调用前后写 log, 以便定位原生
-    对话框(ACCESS_VIOLATION 0xC0000005)在 Windows 上随机崩的真正触发点。
-    行为不变; 仅增加诊断埋点。
+    v0.8.4：弃用 QFileDialog —— 原生模式在 Windows 上受实机 exec() 随机爆
+    0xC0000005；自绘模式又不能浏览磁盘。改用纯 QWidget 自绘 MdxPickerDialog
+    (ui/mdx_picker.py): 路径栏 + QFileSystemModel 树, 可浏览整个磁盘任意目录,
+    同时规避原生 Shell/COM 崩溃, 也彻底解决“文件对话框弹不出/选不了”的坑。
     """
-    from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QFileDialog
-
-    write_log("[ask] _ask_mdx_path enter")
-
-    last_dir = (os.path.expanduser("~/Desktop")
-                if os.path.isdir(os.path.expanduser("~/Desktop"))
-                else os.path.expanduser("~"))
-    write_log(f"[ask] last_dir={last_dir}")
-    dlg = QFileDialog(None, "选择 MDX 词典", last_dir)
-    write_log("[ask] QFileDialog constructed")
-    dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
-    dlg.setNameFilter("MDX 词典 (*.mdx);;所有文件 (*)")
-    write_log("[ask] setFileMode/NameFilter done")
-    dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
-    dlg.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-    write_log("[ask] modality/flags set")
-    dlg.show()
-    dlg.raise_()
-    dlg.activateWindow()
-    QApplication.processEvents()
-    write_log("[ask] shown+focus, 即将 exec()")
-    state = dlg.exec()  # 阻塞直到用户选定/取消
-    write_log(f"[ask] exec() returned state={state}")
-    if state and dlg.selectedFiles():
-        write_log("[ask] file chosen")
-        return dlg.selectedFiles()[0]
-    write_log("[ask] no file selected (None)")
+    from ui.mdx_picker import MdxPickerDialog
+    start_dir = (os.path.expanduser("~/Desktop")
+                 if os.path.isdir(os.path.expanduser("~/Desktop"))
+                 else os.path.expanduser("~"))
+    dlg = MdxPickerDialog(start_dir=start_dir)
+    if dlg.exec() == MdxPickerDialog.DialogCode.Accepted:
+        return dlg.selected_path
     return None
 
 

@@ -9,6 +9,8 @@ lzo_binaries, lzo_datas, lzo_hidden = collect_all('lzo', on_error='ignore')
 
 # 词典包全部模块（含子进程构建用到的 indexer/mdx_parser/lzo/ripemd128/searcher）
 dict_submodules = collect_submodules('dictionary')
+# UI 包全部模块（含 v0.8.4 新自绘文件选择器 ui/mdx_picker）
+ui_submodules = collect_submodules('ui')
 
 a = Analysis(
     ['main.py'],
@@ -18,7 +20,8 @@ a = Analysis(
            ('version.txt', '.')],     # 版本号(单一来源, 由 CI 注入, get_version() 读取)
     hiddenimports=['dictionary.indexer', 'dictionary.mdx_parser',
                    'dictionary.searcher', 'dictionary.lzo',
-                   'dictionary.ripemd128', 'multiprocessing'] + dict_submodules + lzo_hidden,
+                   'dictionary.ripemd128', 'multiprocessing',
+                   'ui.mdx_picker'] + dict_submodules + ui_submodules + lzo_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

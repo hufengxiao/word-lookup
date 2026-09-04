@@ -404,6 +404,16 @@ def bootstrap(app, argv) -> int:
         return 1
 
     app._gh = gh  # 保存引用防 GC
+    # case3 兜底：show_window() 从 opacity=0 淡入，个别环境淡入计时未推进会导致
+    # 窗口卡在近似透明 → 用户以为“索引完没打开软件”。这里强制到不透明并置前台。
+    try:
+        window.setWindowOpacity(1.0)
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        write_log("[bootstrap] window force-visible opacity=1.0")
+    except Exception:  # noqa: BLE001
+        pass
     write_log("[bootstrap] ready")
 
 

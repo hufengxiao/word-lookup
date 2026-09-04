@@ -694,6 +694,11 @@ class SearchWindow(QFrame):
     def _do_search(self, _seq=0):
         q = self._title.text().strip()
         if not q:
+            # 空输入(纯空格也算空)：收起且清空结果，避免回车误打开上一个词的详情
+            self._last_query = ""
+            self._last_rows = ()
+            self._list.setCurrentItem(None)
+            self._list.setCurrentRow(-1)
             self._collapse()
             return
         rows = self._searcher.search(q, MAX_SUGGEST)
@@ -746,6 +751,9 @@ class SearchWindow(QFrame):
     def _on_return(self):
         if self._mode == "detail":
             # 已在详情视图，Enter 无操作（避免重复切换）
+            return
+        # 空输入(没有真实查询词)时忽略回车——防止"输入空格回车却打开上一个词的详情"
+        if not self._title.text().strip():
             return
         key = self._current_key()
         if not key:

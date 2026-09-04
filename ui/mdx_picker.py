@@ -46,7 +46,9 @@ class MdxPickerDialog(QDialog):
         self._model = QFileSystemModel(self)
         self._model.setFilter(QDir.Filter.AllDirs | QDir.Filter.Files | QDir.Filter.NoDotAndDotDot)
         self._model.setReadOnly(True)
-        self._model.setNameFilters(_MDX_FILTER)  # 默认只看 .mdx(目录始终显示)
+        # default 显示所有文件(不默认过滤)，否则当前目录没有 .mdx 时文件会被全滤掉，
+        # 用户看到“里面有文件但选不了/看不到”。要看 .mdx 用下拉切换过滤。
+        self._model.setNameFilters([])
 
         root0 = start_dir or os.path.expanduser("~")
         root0 = root0 if os.path.isdir(root0) else os.path.expanduser("~")
@@ -92,6 +94,7 @@ class MdxPickerDialog(QDialog):
         self._filter_box = QComboBox(self)
         self._filter_box.addItems(["词性词典 (*.mdx)", "所有文件 (*)"])
         self._filter_box.currentIndexChanged.connect(self._apply_filter)
+        self._filter_box.setCurrentIndex(1)  # 默认「所有文件」：避免没 .mdx 的目录视而不见
         info_row.addWidget(self._status, 1)
         info_row.addWidget(QLabel("过滤:"), 0)
         info_row.addWidget(self._filter_box, 0)
@@ -110,7 +113,7 @@ class MdxPickerDialog(QDialog):
         lay.addWidget(buttons)
         self.setLayout(lay)
         self.set_root(root0)  # 建好 _path_edit 后再设初始目录
-        self._apply_filter(0)
+        self._apply_filter(self._filter_box.currentIndex())  # 跟随下拉默认=所有文件
 
     # ---- 路径导航 ----
     def _cwd(self) -> str:

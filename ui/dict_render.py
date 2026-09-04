@@ -299,16 +299,20 @@ def convert_dict_html(html: str) -> str:
                 if c:
                     parts.append(f"<span class='chn'>{_esc(c)}</span>")
                 parts.append("</div>")
-                # 紧跟本释义的例句(如果有): 英文一行 + 搭配前缀 + 中文一行
+                # 紧跟本释义的例句(如果有): 搭配短语/英文/中文 分三段各占一行
                 exs = p.sense_examples[cur_no] if \
                     cur_no < len(p.sense_examples) else []
                 for cf, en, cn in exs:
                     if not (en or cn or cf):
                         continue
-                    lead = f"<span class='excf'>{_esc(cf)}</span> " if en and cf else ""
                     parts.append("<div class='ex'>")
+                    # 搭配短语单独一行(如 take something with you), 换行后再接例句
+                    if cf:
+                        parts.append(f"<span class='excf'>{_esc(cf)}</span>")
+                        if en:
+                            parts.append("<br>")
                     if en:
-                        parts.append(f"{lead}<span class='exx'>{_esc(en)}</span>")
+                        parts.append(f"<span class='exx'>{_esc(en)}</span>")
                         if cn:
                             parts.append("<br>")
                     if cn:

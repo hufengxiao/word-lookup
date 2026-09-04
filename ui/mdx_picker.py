@@ -117,15 +117,30 @@ class MdxPickerDialog(QDialog):
 
     # ---- 路径导航 ----
     def _cwd(self) -> str:
-        return self._model.filePath(self._tree.rootIndex())
+        return getattr(self, "_current", os.path.expanduser("~"))
 
     def set_root(self, path: str) -> None:
-        path = os.path.abspath(path)
+        """定位到目录: 树根取该目录的【父目录】并展开该目录,
+        使其与同级目录(如 Downloads/Desktop/Program Files…)同层可见, 用户随点进入。
+        """
+        path = os.path.abspath(os.path.expanduser(path))
         if not os.path.isdir(path):
-            path = os.path.dirname(path)
+            path = os.path.dirname(path) or os.path.expanduser("~")
+            if not os.path.isdir(path):
+                path = os.path.expanduser("~")
+        parent = os.path.dirname(path) or path
+        if not os.path.isdir(parent):
+            parent = path
+        self._current = path
+        # 树根 = 父目录 → 当前目录与其全部兄弟目录同层显示, 便于跳到任意目录
+        self._tree.setRootIndex(self._model.index(parent))
         idx = self._model.index(path)
-        self._tree.setRootIndex(idx)
-        self._path_edit.setText(self._model.filePath(idx))
+        self._tree.expand(idx)        # 展开当前目录, 展示其内部文件/子目录
+        self._tree.setCurrentIndex(idx)
+        self._tree.scrollTo(idx)      # 滚到当前目录行
+        self._path_edit.setText(path)
+        # 收到根路径的兄弟集可见, 但不要展开过多
+        self._tree.expandToDepth(0)   # 只展开一层, 保持清爽
 
     def _goto_path(self) -> None:
         p = self._path_edit.text().strip().strip('"') or "~"

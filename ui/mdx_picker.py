@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileSystemModel,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -56,7 +57,17 @@ class MdxPickerDialog(QDialog):
         self._tree.setModel(self._model)
         self._tree.setRootIsDecorated(True)
         self._tree.setAnimated(False)
-        self._tree.setHeaderHidden(True)  # 单列, 只显名称
+        self._tree.setHeaderHidden(False)  # 显示表头, 让用户能看到/手动拖拽列宽
+        self._tree.setRootIsDecorated(True)
+        # 文件选择器只关心文件名：隐藏大小/类型/修改日期 列，仅保留「名称」。
+        # 名称列 setStretchLastSection 默认撑满窗口(永远够宽)，
+        # Interactive 又允用户手动托拽加宽/收窄 —— 两全。
+        for ci in (1, 2, 3):
+            self._tree.hideColumn(ci)
+        hdr = self._tree.header()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)  # 可手动拖宽
+        hdr.setStretchLastSection(True)  # 名称列(唯一可见列)自动占满剩余宽度
+        hdr.setSectionsMovable(False)
         self._tree.doubleClicked.connect(self._on_double)
         self._tree.clicked.connect(self._on_click)
 

@@ -1,85 +1,77 @@
-"""自绘 MDX 文件选择对话框 —— 替代 QFileDialog。
+"""自绘 MDX 文件选择对话框 —— 扁平列表式，替换 QFileDialog/QFileSystemModel。
 
-背景(v0.8.2/0.8.3 实机定位)：
-  * QFileDialog 原生模式在 PyInstaller 打包的 Windows 上, exec() 期间会随机爆
-    0xC0000005 (ACCESS_VIOLATION), 且 setOption 也救不了 — 原生对话框 exec
-    底层走 Windows Shell/COM, 在部分机器不稳定。
-  * QFileDialog 自绘模式(DontUseNativeDialog=True) 稳定, 但在 Windows 上无法
-    正常浏览磁盘(只能待 exe 目录、目录里的 .mdx 也看不到)。
-结论: 弃用 QFileDialog, 用纯 QWidget 做一个文件浏览器 — 路径栏 + QFileSystemModel
-    QTreeView, 能正向浏览任意目录、双击入子目录、上级返回、过滤文件, 全程不碰
-    原生 Shell/COM 对话框, 既稳定又能浏览整个磁盘。
+背景决策：
+  * QFileDialog 原生模式在打包后 Windows 上 exec() 随机 0xC0000005 崩溃；
+    DontUseNativeDialog 自绘模式又无法浏览磁盘。
+  * QTreeView+QFileSystemModel 的树导航在 Windows 上体验差且不可靠(用户始终
+    陷在当前目录、看不到同级目录怎么跳都出不来)。
+故改用纯 QListWidget 扁平列表：当前目录里的内容按「上级入口 + 子目录 + 文件」
+逐行铺开，任何一层都能一目了然看到所有子目录并可点击进入；上级永远有一行，
+不可能"被困"在某一层。
 """
 import os
 
-from PySide6.QtCore import QDir, QModelIndex
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFileSystemModel,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
-    QTreeView,
     QVBoxLayout,
 )
 
-_MDX_FILTER = ["*.mdx"]
+
+def _dirs_files(path: str, only_mdx: bool):
+    """返回 (子目录列表, 文件列表)，都排序；目录在前。only_mdx 时文件只留 .mdx。"""
+    sub, files = [], []
+    try:
+        for n in sorted(os.listdir(path)):
+            p = os.path.join(path, n)
+            if os.path.isdir(p):
+                sub.append(n)
+            elif only_mdx:
+                if n.lower().endswith(".mdx"):
+                    files.append(n)
+            else:
+                files.append(n)
+    except OSError:
+        pass
+    return sub, files
 
 
 class MdxPickerDialog(QDialog):
-    """自绘 .mdx 词典选择对话框(不依赖 QFileDialog, 不碰原生 Shell)。
+    """自绘 .mdx 词典选择(扁平列表, 不依赖 QFileDialog/QFileSystemModel)。
 
-    布局: 地址栏(上级/路径编辑/转到) + 文件系统树(QTreeView) + 过滤 + 确定/取消。
+    列表每层结构：第一行「上级目录」→ 之后所有子目录(可点击进入) → 再之后文件。
+    顶部：地址栏(可编辑任意路径) + 上级按钮 + 过滤下拉。
     """
 
     def __init__(self, start_dir: str | None = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("选择 MDX 词典")
         self.setModal(True)
-        self.setMinimumSize(620, 440)
+        self.setMinimumSize(640, 460)
         self._selected_path: str | None = None
-
-        self._model = QFileSystemModel(self)
-        self._model.setFilter(QDir.Filter.AllDirs | QDir.Filter.Files | QDir.Filter.NoDotAndDotDot)
-        self._model.setReadOnly(True)
-        # default 显示所有文件(不默认过滤)，否则当前目录没有 .mdx 时文件会被全滤掉，
-        # 用户看到“里面有文件但选不了/看不到”。要看 .mdx 用下拉切换过滤。
-        self._model.setNameFilters([])
+        self._only_mdx = False
 
         root0 = start_dir or os.path.expanduser("~")
-        root0 = root0 if os.path.isdir(root0) else os.path.expanduser("~")
-        self._model.setRootPath(root0)
-
-        # ---- 文件树 ----
-        self._tree = QTreeView(self)
-        self._tree.setModel(self._model)
-        self._tree.setRootIsDecorated(True)
-        self._tree.setAnimated(False)
-        self._tree.setHeaderHidden(False)  # 显示表头, 让用户能看到/手动拖拽列宽
-        self._tree.setRootIsDecorated(True)
-        # 文件选择器只关心文件名：隐藏大小/类型/修改日期 列，仅保留「名称」。
-        # 名称列 setStretchLastSection 默认撑满窗口(永远够宽)，
-        # Interactive 又允用户手动托拽加宽/收窄 —— 两全。
-        for ci in (1, 2, 3):
-            self._tree.hideColumn(ci)
-        hdr = self._tree.header()
-        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)  # 可手动拖宽
-        hdr.setStretchLastSection(True)  # 名称列(唯一可见列)自动占满剩余宽度
-        hdr.setSectionsMovable(False)
-        self._tree.doubleClicked.connect(self._on_double)
-        self._tree.clicked.connect(self._on_click)
+        root0 = os.path.abspath(root0)
+        if not os.path.isdir(root0):
+            root0 = os.path.expanduser("~")
+        self._current = root0
 
         # ---- 地址栏 ----
         path_row = QHBoxLayout()
         btn_up = QPushButton("\u2191 上级")
-        btn_up.setToolTip("跳转到当前目录的上一级")
+        btn_up.setToolTip("返回当前目录的上一级")
         btn_up.clicked.connect(self._go_up)
         self._path_edit = QLineEdit(self)
-        self._path_edit.setText(os.path.abspath(root0))
+        self._path_edit.setText(root0)
         self._path_edit.returnPressed.connect(self._goto_path)
         btn_go = QPushButton("转到")
         btn_go.clicked.connect(self._goto_path)
@@ -87,14 +79,18 @@ class MdxPickerDialog(QDialog):
         path_row.addWidget(self._path_edit, 1)
         path_row.addWidget(btn_go)
 
-        # ---- 状态 + 过滤行 ----
+        # ---- 文件列表 ----
+        self._list = QListWidget(self)
+        self._list.itemClicked.connect(self._on_click)
+        self._list.itemDoubleClicked.connect(self._on_double)
+
+        # ---- 状态 + 过滤 ----
         info_row = QHBoxLayout()
         self._status = QLabel("未选择")
         self._status.setStyleSheet("color:#999;")
         self._filter_box = QComboBox(self)
         self._filter_box.addItems(["词性词典 (*.mdx)", "所有文件 (*)"])
-        self._filter_box.currentIndexChanged.connect(self._apply_filter)
-        self._filter_box.setCurrentIndex(1)  # 默认「所有文件」：避免没 .mdx 的目录视而不见
+        self._filter_box.currentIndexChanged.connect(self._on_filter)
         info_row.addWidget(self._status, 1)
         info_row.addWidget(QLabel("过滤:"), 0)
         info_row.addWidget(self._filter_box, 0)
@@ -108,39 +104,73 @@ class MdxPickerDialog(QDialog):
 
         lay = QVBoxLayout(self)
         lay.addLayout(path_row)
-        lay.addWidget(self._tree, 1)
+        lay.addWidget(self._list, 1)
         lay.addLayout(info_row)
         lay.addWidget(buttons)
         self.setLayout(lay)
-        self.set_root(root0)  # 建好 _path_edit 后再设初始目录
-        self._apply_filter(self._filter_box.currentIndex())  # 跟随下拉默认=所有文件
+        self._filter_box.setCurrentIndex(1)  # 默认「所有文件」: 避免看不到任何文件; 要只看词典再切 mdx
+        self._refresh()
 
-    # ---- 路径导航 ----
+    # ---- 目录导航 ----
     def _cwd(self) -> str:
-        return getattr(self, "_current", os.path.expanduser("~"))
+        return self._current
 
     def set_root(self, path: str) -> None:
-        """定位到目录: 树根取该目录的【父目录】并展开该目录,
-        使其与同级目录(如 Downloads/Desktop/Program Files…)同层可见, 用户随点进入。
-        """
         path = os.path.abspath(os.path.expanduser(path))
         if not os.path.isdir(path):
             path = os.path.dirname(path) or os.path.expanduser("~")
-            if not os.path.isdir(path):
-                path = os.path.expanduser("~")
-        parent = os.path.dirname(path) or path
-        if not os.path.isdir(parent):
-            parent = path
         self._current = path
-        # 树根 = 父目录 → 当前目录与其全部兄弟目录同层显示, 便于跳到任意目录
-        self._tree.setRootIndex(self._model.index(parent))
-        idx = self._model.index(path)
-        self._tree.expand(idx)        # 展开当前目录, 展示其内部文件/子目录
-        self._tree.setCurrentIndex(idx)
-        self._tree.scrollTo(idx)      # 滚到当前目录行
         self._path_edit.setText(path)
-        # 收到根路径的兄弟集可见, 但不要展开过多
-        self._tree.expandToDepth(0)   # 只展开一层, 保持清爽
+        self._refresh()
+
+    def _refresh(self) -> None:
+        """按当前目录重建列表：上级入口 → 子目录 → 文件。"""
+        cur = self._current
+        self._list.clear()
+        parent = os.path.dirname(cur)
+        if parent and parent != cur and os.path.isdir(parent):
+            it = QListWidgetItem(f"\u2191  上级目录 \u00b7 {os.path.basename(parent) or parent}")
+            it.setForeground(Qt.GlobalColor.gray)
+            f = it.font(); f.setItalic(True); it.setFont(f)
+            it.setData(Qt.ItemDataRole.UserRole, ("up", parent))
+            self._list.addItem(it)
+
+        sub, files = _dirs_files(cur, self._only_mdx)
+        for n in sub:
+            it = QListWidgetItem("\U0001F4C1 " + n)  # 📁
+            it.setData(Qt.ItemDataRole.UserRole, ("dir", os.path.join(cur, n)))
+            self._list.addItem(it)
+        for f in files:
+            it = QListWidgetItem("   " + f)
+            it.setData(Qt.ItemDataRole.UserRole, ("file", os.path.join(cur, f)))
+            self._list.addItem(it)
+
+        if not sub and not files:
+            self._status.setText("此目录为空")
+        else:
+            self._status.setText(f"{len(sub)} 个目录 · {len(files)} 个文件    当前: {cur}")
+
+    def _on_click(self, item: QListWidgetItem):
+        kind, path = item.data(Qt.ItemDataRole.UserRole)
+        if kind == "file":
+            self._status.setText("文件: " + path)
+            self._selected_path = path
+        elif kind == "dir":
+            self._status.setText("目录: " + path)
+
+    def _on_double(self, item: QListWidgetItem):
+        kind, path = item.data(Qt.ItemDataRole.UserRole)
+        if kind == "dir":
+            self.set_root(path)      # 双击目录进入
+        elif kind == "file":
+            self._on_accept()        # 双击文件直接选定
+        elif kind == "up":
+            self.set_root(path)
+
+    def _go_up(self) -> None:
+        parent = os.path.dirname(self._current)
+        if parent and parent != self._current and os.path.isdir(parent):
+            self.set_root(parent)
 
     def _goto_path(self) -> None:
         p = self._path_edit.text().strip().strip('"') or "~"
@@ -151,40 +181,20 @@ class MdxPickerDialog(QDialog):
         else:
             self._status.setText("路径不存在或不是目录")
 
-    def _go_up(self) -> None:
-        parent = os.path.dirname(self._cwd())
-        if parent and parent != self._cwd() and os.path.isdir(parent):
-            self.set_root(parent)
-
-    def _apply_filter(self, idx: int) -> None:
-        self._model.setNameFilters(_MDX_FILTER if idx == 0 else [])
-
-    def _on_click(self, index: QModelIndex) -> None:
-        fp = self._model.filePath(index)
-        if self._model.isDir(index):
-            self._status.setText("目录: " + fp)
-        else:
-            self._status.setText("文件: " + fp)
-            self._selected_path = fp
-
-    def _on_double(self, index: QModelIndex) -> None:
-        fp = self._model.filePath(index)
-        if self._model.isDir(index):
-            self.set_root(fp)
-        else:
-            self._on_click(index)
+    def _on_filter(self, idx: int) -> None:
+        self._only_mdx = (idx == 0)
+        self._refresh()
 
     def _on_accept(self) -> None:
-        # 未明确点文件(空白处确认)就选当前目录第一个 .mdx
         if not self._selected_path or not os.path.isfile(self._selected_path):
-            cur = self._cwd()
-            try:
-                mdx = [f for f in os.listdir(cur) if f.lower().endswith(".mdx")]
-            except OSError:
-                mdx = []
-            self._selected_path = os.path.join(cur, mdx[0]) if mdx else None
+            sub, files = self._dirs_all()
+            mdx = [os.path.join(self._current, f) for f in files if f.lower().endswith(".mdx")]
+            self._selected_path = mdx[0] if mdx else None
         if self._selected_path:
             self.accept()
+
+    def _dirs_all(self):
+        return _dirs_files(self._current, False)
 
     @property
     def selected_path(self) -> str | None:

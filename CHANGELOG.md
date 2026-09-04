@@ -3,6 +3,19 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.8.17] - 2026-09-04
+
+### 🔧 修复：Phrasal Verbs 短语点不跳转
+v0.8.16 把短语列表做成可点跳转，但实际点击没反应——根因在 QTextBrowser
+`setOpenExternalLinks(True)`：Qt 遇到自定义 `lookup:` 协议会尝试交给系统默认程序
+打开而**失败**，从而吞掉点击、`anchorClicked` 信号不发射。
+
+修复：详情视图改用 `setOpenExternalLinks(False)`，锚点点击统一由 `anchorClicked`
+分流——`lookup:<词>` 跳转到短语完整词条，`http(s)` 仍交系统浏览器打开。
+
+已在 offscreen 实测：`openExternalLinks=False` 下点击 `lookup:run across`
+正确触发 `anchorClicked -> ['lookup:run across']`。
+
 ## [v0.8.16] - 2026-09-04
 
 ### ⚡ Phrasal Verbs 列表变可点跳转

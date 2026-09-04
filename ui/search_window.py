@@ -360,8 +360,11 @@ class SearchWindow(QFrame):
                      "QScrollBar::add-line,QScrollBar::sub-line{height:0;}")
                     % CLR_CARD
                 )
-        self._detail_view.setOpenExternalLinks(True)
-        # 拦截词典详情里的内部跳转链接(lookup:// 协议), 如 Phrasal Verbs 短语 →
+        # 锚点链接统一交给 anchorClicked 处理(见 _on_detail_anchor)。
+        # 不能开 setOpenExternalLinks(True): 对自定义 lookup: 协议, Qt 会尝试交给
+        # 系统默认程序打开而吞掉点击, 导致 anchorClicked 不触发 → 短语跳转失灵。
+        self._detail_view.setOpenExternalLinks(False)
+        # 拦截词典详情里的内部跳转链接(lookup: 协议), 如 Phrasal Verbs 短语 →
         # 直接在当前详情视图切换显示该短语自己的完整词条。
         self._detail_view.anchorClicked.connect(self._on_detail_anchor)
         self._detail_view.hide()
@@ -658,13 +661,22 @@ class SearchWindow(QFrame):
         self._animate_height(H_DETAIL)
 
     def _on_detail_anchor(self, url):
-        """响应详情页内 lookup:// 链接(如 Phrasal Verbs 短语) → 跳转到目标词条。"""
-        if not url or url.scheme() != "lookup":
-            return  # 外部链接由 setOpenExternalLinks 处理
-        # QUrl.path() 已把 %20 等解码为空格, 直接取词
-        word = url.path().lstrip("/")
-        if word:
-            self._show_detail(word)
+        """响应详情页内的锚点链接点击。
+
+        lookup:<词> → 跳转到该词条完整内容(Phrasal Verbs 短语等)。
+        http(s) → 交给系统浏览器打开(词典里的外部引用)。
+        """
+        if url is None:
+            return
+        scheme = url.scheme()
+        if scheme == "lookup":
+            # QUrl.path() 已把 %20 等解码为空格, 直接取词
+            word = url.path().lstrip("/")
+            if word:
+                self._show_detail(word)
+        elif scheme in ("http", "https"):
+            from PySide6.QtGui import QDesktopServices
+            QDesktopServices.openUrl(url)
 
     def _set_detail_size(self):
         self._expanded = True

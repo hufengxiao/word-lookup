@@ -416,6 +416,10 @@ def bootstrap(app, argv) -> int:
         pass
     write_log("[bootstrap] ready")
 
+    # 单实例唤醒服务：监听"二次启动"通知，收到后把搜索框拉到前台。
+    _setup_wakeup_server(window)
+    return 0
+
 
 def _show_about(parent=None):
     """统一版本 / 关于对话框 —— 托盘「关于」与 `--version` 共用同一实现。"""
@@ -582,6 +586,77 @@ def _install_crash_guard() -> None:
             pass
 
 
+def _wake_server_name() -> str:
+    """本地 IPC 管道名。与 lock 文件不同名(锁是文件,socket 是具名管道),
+    但用同一 prefix, 避免和别家应用冲突。"""
+    return "wordlookup.wakeup.socket"
+
+
+def _notify_running_instance():
+    """第二实例：向已运行实例挂的 QLocalServer 发一条唤醒消息, 然后退出。
+
+    同步等待连接/发送完成, 不需要进入 Qt 事件循环; 发送失败也静默忽略——
+    通常意味着第一实例还在启动中(server 未就绪), 用户再点一次即可。
+    """
+    try:
+        from PySide6.QtNetwork import QLocalSocket
+        sock = QLocalSocket()
+        sock.connectToServer(_wake_server_name())
+        if sock.waitForConnected(500):
+            sock.write(b"wake")
+            sock.waitForBytesWritten(500)
+            sock.flush()
+        sock.disconnectFromServer()
+    except Exception:  # noqa: BLE001
+        pass  # 唤醒失败不阻塞第二实例退出
+
+
+def _setup_wakeup_server(window):
+    """第一实例：监听"唤醒"管道。收到第二实例消息后把搜索框拉到前台。
+
+    复用 window.show_window()(淡入+置顶)，与托盘右键「打开」行为一致。
+    server 对象挂到 window 上防 GC。失败只记日志, 不阻塞启动。
+    """
+    try:
+        from PySide6.QtNetwork import QLocalServer
+        server = QLocalServer()
+
+        def on_connection():
+            try:
+                conn = server.nextPendingConnection()
+                if conn:
+                    conn.readyRead.connect(lambda: _consume(conn))
+            except Exception as e:  # noqa: BLE001
+                write_log("[wake] server accept FAILED: " + str(e))
+
+        def _consume(conn):
+            try:
+                conn.readAll()
+                conn.disconnectFromServer()
+                conn.deleteLater()
+            except Exception:
+                pass
+            try:
+                window.show_window()
+                window.raise_()
+                window.activateWindow()
+                write_log("[wake] 收到唤醒请求, 窗口已置前")
+            except Exception as e:  # noqa: BLE001
+                write_log("[wake] 唤起窗口 FAILED: " + str(e))
+
+        server.newConnection.connect(on_connection)
+        if not server.listen(_wake_server_name()):
+            # 管道名已被监听: 理论不会到这(本实例已持锁); 记录即可
+            write_log("[wake] wake server already listening (skip)")
+        else:
+            # 关键: 保存引用防 GC —— 若 server 被回收, 具名管道随之关闭,
+            # 二次启动的唤醒请求将无法送达。挂到 window 上随主窗口存活。
+            window._wake_server = server
+            write_log("[wake] 唤醒服务已就绪")
+    except Exception as e:  # noqa: BLE001
+        write_log("[wake] server setup FAILED: " + str(e))
+
+
 def main():
     # ---- CLI 便捷参数：--version / -v ----
     # 说明: PyInstaller --windowed(console=False) 的 exe 在 Windows 下不绑定控制台,
@@ -615,7 +690,10 @@ def main():
         if lock.tryLock(100):
             app._lockfile = lock
         else:
-            write_log("[startup] 已有 Word Lookup 在运行，本次启动退出")
+            # 已有实例在运行：不直接退出，先向实例发"唤起"信号，让它把
+            # 搜索框拉到前台（单实例唤醒）。发完再退出本进程。
+            _notify_running_instance()
+            write_log("[startup] 已有 Word Lookup 在运行（已发送唤醒请求），本次启动退出")
             raise SystemExit(0)
     except SystemExit:
         raise

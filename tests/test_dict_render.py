@@ -159,3 +159,32 @@ def test_example_cf_syntax_label_stays_inline():
     i_ph = out.find("run something")
     i_def = out.find("to travel a distance")
     assert 0 <= i_ph < i_def, "run something 应为短语头, 显示在释义前"
+
+
+def test_idioms_section_renders_head_and_def():
+    """习语区(<div class=idioms>)独立为一小节, 每个 idm-g 显示词组头+释义, 避免
+    词组头丢失 / 释义散落到主列表。"""
+    raw = ("<div class='entry'><h1 class='headword'>run</h1>"
+           "<span class='pos'>verb</span>"
+           "<li class='sense'><span class='def'>to move fast</span>"
+           "<defT><chn>跑</chn></defT></li>"
+           "<div class='idioms'><span class='idm-g'>"
+           "<span class='idm'>come running</span>"
+           "<ol class='sense_single'><li class='sense'>"
+           "<span class='def'>to be pleased to do sth</span>"
+           "<defT><chn>赶紧应约</chn></defT></li></ol>"
+           "</span></div>"
+           "<aside class='phrasal_verb_links'><span class='unbox'>Phrasal Verbs</span>"
+           "<ul class='pvrefs'><li><span class='xh'>run across</span></li></ul>"
+           "</aside>"
+           "<li class='sense'><span class='def'>a time running</span>"
+           "<defT><chn>跑步</chn></defT></li>"
+           "</div>")
+    out = convert_dict_html(raw)
+    # 习语词组头 + 释义一起显示
+    assert "come running" in out
+    assert "to be pleased to do sth" in out
+    assert "be pleased" in out
+    # 短语动词链接列表
+    assert "run across" in out
+    assert "Phrasal Verbs" in out

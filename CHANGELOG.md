@@ -3,6 +3,22 @@
 本项目所有值得记录的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.8.15] - 2026-09-04
+
+### 🆕 详情页：习语区 + 短语动词区分离开，词组一律带释义
+v0.8.14 修复了 `run` 主释义的"＋adv./prep. 无释义、run something 刷屏"，但发现更深的乱象：
+牛津把每个词条拆成**三大区块**，而之前只有主释义被渲染：
+
+| 区块 | 真实结构 | 之前 | 现在 |
+|---|---|---|---|
+| **主释义** | `<ol class=senses_multiple>` | ✅ 正常 | ✅ 正常 |
+| **习语** | `<span class=idm> come running</span>` + 自己的释义/例句 | ❌ 词组头丢失、释义怪裂 | ✅ 每习语显示"词组头 + 释义 + 例句" |
+| **短语动词** | `<span class=xh> run across</span>` 交叉链接列表 | ❌ 完全没显示 | ✅ 词组列表 |
+
+- 习语区：`come running` → 加词组头 + 英释 + 中释 + 例句
+- 短语动词区：run across / run after / run away... 逐一列出
+- 恢复 v0.12 的"词组后换行再接例句"：`+ adv./prep.` 单独一行 → 换行 → 英文例句 → 换行 → 中文
+
 ## [v0.8.14] - 2026-09-04
 
 ### 🩹 详情页：区分"义项短语头" vs "例句标注" 两种 <span class=cf>

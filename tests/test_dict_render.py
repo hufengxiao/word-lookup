@@ -134,3 +134,28 @@ def test_sense_phrase_head_shows_before_def():
     assert 0 < i_ph < i_def, "义项短语头应显示在释义之前"
     assert "phr" in out, "应使用短语头样式块"
     assert "phrtxt" in out
+
+
+def test_example_cf_syntax_label_stays_inline():
+    """例句内的 + adv./prep. 这类语法标注应内联, 不单独成行(避免 run 刷屏),
+    且不能抢走义项短语头的位置。"""
+    raw = ("<div class='entry'><h1 class='headword'>run</h1><span class='pos'>verb</span>"
+           "<li class='sense'><span class='def'>to move using your legs</span>"
+           "<defT><chn>跑</chn></defT>"
+           "<ul class='examples'>"
+           "<li><span class='x'>Can you run?</span><xT><chn>你能跑吗？</chn></xT></li>"
+           "<li><span class='cf'>+ adv./prep.</span><span class='x'>The dogs ran off.</span>"
+           "<xT><chn>狗跑了。</chn></xT></li>"
+           "</ul></li>"
+           "<li class='sense'><span class='cf'>run something</span>"
+           "<span class='def'>to travel a distance</span><defT><chn>跑（距离）</chn></defT></li>"
+           "</div>")
+    out = convert_dict_html(raw)
+    # 例句里的 +adv./prep. 不应自成短语行(它属于例句), 而 run something 才是短语头
+    i_pos = out.find("adv./prep.")
+    i_ex = out.find("The dogs ran off")
+    assert 0 < i_pos < i_ex, "语法标注应在例句之前"
+    # 短语头 run something 应显示在释义前
+    i_ph = out.find("run something")
+    i_def = out.find("to travel a distance")
+    assert 0 <= i_ph < i_def, "run something 应为短语头, 显示在释义前"

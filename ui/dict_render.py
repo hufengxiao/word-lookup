@@ -120,32 +120,35 @@ class DictHtmlParser(HTMLParser):
                 # 例句条目(非 sense li, 因 sense li 不会出现在 examples ul 内)
                 self._ex_li = {"cf": "", "en": "", "cn": ""}
                 self._ex_seg = None
-                # 注意: 例句 li 可能直接是把整句包在 <span class=x> 里
-                return  # li 本身不计入步骤阶段, 交给后续子标签设置
+                return  # li 本身不计入阶段, 交给后续子标签设置
             if self._ex_li is None:
                 self._ex_li = {"cf": "", "en": "", "cn": ""}
             cls = set(self._class(attrs).split())
             if tag == "span" and "cf" in cls:
                 self._ex_seg = "cf"
-                self._cf_pending = False  # 例句内 cf 不当作义项短语头
+                self._cf_pending = False  # 例句内的 cf 是"用法结构标注", 不作义项短语头
             elif tag == "span" and (cls & {"x", "unx"}):
                 self._ex_seg = "en"
             elif tag in ("xt", "at", "ot") or (tag == "span" and "chn" in cls):
                 self._ex_seg = "cn"
         else:
-            # ---- 义项短语头: sense 内、def 之前的 <span class=cf> (如 take something) ----
+            # ---- 义项短语头: 仅当 def 紧跟在 cf 之后(而非例句 <li> 内)才记录 ----
             cls = set(self._class(attrs).split())
             if tag == "span" and "cf" in cls:
-                self._cf_pending = True
+                self._cf_pending = "maybe"   # 待 def 确认
                 self._cf_buf = ""
-            elif tag == "span" and ("def" in cls or "defT" in cls):
+            elif (tag == "span" and (cls & {"def", "defT"})):
                 if self._cf_pending and self.sense_idx > 0:
                     _ph = " ".join(self._cf_buf.split())
                     if _ph:
                         while len(self.sense_phrases) <= self.sense_idx:
                             self.sense_phrases.append(None)
                         self.sense_phrases[self.sense_idx] = _ph
-                self._cf_pending = False  # 绑定结束(或丢弃)
+                self._cf_pending = False
+            else:
+                # def 前出现其他标签(如 <x> 例句 / O10): cf 不是义项短语头, 丢弃
+                if tag in ("span", "x", "O10"):
+                    self._cf_pending = False
         # 子义项小标题 <h2 class="shcut">（如 manage 管理 / provide 提供 / liquid 液体）
         # 整棵子树(含内层 <shcutT><chn>中文</chn>)都不是一条独立释义, 必须整块跳过,
         # 否则其中文 <chn> 会被当成“定义中文”并污染到上一条/下一条释义的中文行。
@@ -332,10 +335,12 @@ def convert_dict_html(html: str) -> str:
                     if not (en or cn or cf):
                         continue
                     parts.append("<div class='ex'>")
-                    # 搭配短语单独一行(如 take something with you), 换行后再接例句
+                    # 例句内标注: 以 + 开头的(如 + adv./prep. + adj.)是纯语法结构标注,
+                    # 内联成灰色小标注缀句首(刷屏不新行); 其余搭配短语(如 take something
+                    # with you 取 ...)单独一行, 换行后再接例句。
                     if cf:
                         parts.append(f"<span class='excf'>{_esc(cf)}</span>")
-                        if en:
+                        if not cf.startswith("+") and en:
                             parts.append("<br>")
                     if en:
                         parts.append(f"<span class='exx'>{_esc(en)}</span>")

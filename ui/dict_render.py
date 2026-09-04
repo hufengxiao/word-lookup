@@ -62,6 +62,13 @@ class DictHtmlParser(HTMLParser):
         self._ex_depth = 0      # 例句块 <ul class=...examples> 嵌套深度(其文本不进语义)
         # sense 边界: 进入一个新的 <li class="sense"> 时置 True, 强制切断 def/chn 连续
         self._senses_sep = False
+        # ── 例句归属: 每条释义(sense)内嵌的 <ul class=examples> 例例句按 sense 顺序收集 ──
+        # 与 defs 渲染一一对齐: 第 k 条 def 对应 sense_examples[k] (k 从 1 递增)。
+        self.sense_idx = 0        # 当前释义序号 (每 <li class="sense"> +1)
+        self.sense_examples = []  # index=sense_idx-1 -> [(cf,en,cn), ...]
+        self._in_exul = 0         # 例句 <ul class=examples> 深度 (语义 on/off)
+        self._ex_li = None        # 当前例句 li 缓冲 {"cf","en","cn"}
+        self._ex_seg = None       # 当前例句 li 文本阶段: "cf"/"en"/"cn"
 
     def _class(self, attrs):
         for k, v in attrs:
@@ -99,8 +106,28 @@ class DictHtmlParser(HTMLParser):
             return
         if tag == "ul" and "examples" in set(self._class(attrs).split()):
             self._ex_depth += 1
+            self._in_exul += 1
         if tag == "li" and self._cls_has(attrs, "sense"):
             self._senses_sep = True
+            self.sense_idx += 1
+        # 例句内部各标签: 仅在例句容器内才收集(文本仍不进语义流)
+        if self._in_exul:
+            if tag == "li":
+                # 例句条目(非 sense li, 因 sense li 不会出现在 examples ul 内)
+                self._ex_li = {"cf": "", "en": "", "cn": ""}
+                self._ex_seg = None
+                # 注意: 例句 li 可能直接是把整句包在 <span class=x> 里
+                return  # li 本身不计入步骤阶段, 交给后续子标签设置
+            if self._ex_li is None:
+                self._ex_li = {"cf": "", "en": "", "cn": ""}
+            cls = set(self._class(attrs).split())
+            if tag == "span" and "cf" in cls:
+                self._ex_seg = "cf"
+            elif tag == "span" and (cls & {"x", "unx"}):
+                self._ex_seg = "en"
+            elif tag in ("xt", "at", "ot") or (tag == "sspan" and "chn" in cls):
+                # 中文容器(xt/at/ot 直接包 chn; 或 span.chn)
+                self._ex_seg = "cn"
         # 子义项小标题 <h2 class="shcut">（如 manage 管理 / provide 提供 / liquid 液体）
         # 整棵子树(含内层 <shcutT><chn>中文</chn>)都不是一条独立释义, 必须整块跳过,
         # 否则其中文 <chn> 会被当成“定义中文”并污染到上一条/下一条释义的中文行。
@@ -127,13 +154,23 @@ class DictHtmlParser(HTMLParser):
             return
         if self._ex_depth and tag == "ul":
             self._ex_depth -= 1
-        tag = tag.lower()
+            if self._in_exul:
+                self._in_exul -= 1
+        t = tag.lower()
+        # 例句 li 结束: flush 当前例句到所属 sense
+        if t == "li" and self._ex_li is not None:
+            self._ex_li = self._flush_ex_li(self._ex_li)
+        # 移除语义栈
         for i in range(len(self._tag_stack) - 1, -1, -1):
-            if self._tag_stack[i][0] == tag:
+            if self._tag_stack[i][0] == t:
                 del self._tag_stack[i:]
                 break
 
     def handle_data(self, data):
+        # 例句容器内: 文本按当前阶段收进例句缓冲(不污染语义流)
+        if self._in_exul and self._ex_li is not None and self._ex_seg:
+            self._ex_li[self._ex_seg] += data
+            return
         if self._skip or self._ex_depth or getattr(self, "_shcut_skip", 0) or not self._tag_stack:
             return
         sem = None
@@ -151,6 +188,20 @@ class DictHtmlParser(HTMLParser):
             self.frag[-1][1].append(data)
         else:
             self.frag.append([sem, [data]])
+
+    def _flush_ex_li(self, buf):
+        """把一条例句缓冲归一化后写入当前 sense 槽, 返回 None(标志已消费)。
+
+        与语义流完全独立: 例句不进入 frag, 只按"第 k 个 sense"对齐到后面渲染。
+        """
+        cf = " ".join(buf.get("cf", "").split())
+        en = " ".join(buf.get("en", "").split())
+        cn = " ".join(buf.get("cn", "").split())
+        if en or cn or cf:
+            while len(self.sense_examples) <= self.sense_idx:
+                self.sense_examples.append([])
+            self.sense_examples[self.sense_idx].append((cf, en, cn))
+        return None
 
     @staticmethod
     def _join(frag):
@@ -213,6 +264,7 @@ def convert_dict_html(html: str) -> str:
     # ---------- 宿主大标题 ----------
     parts.append(f"<div class='word'>{_esc(head_disp)}</div>")
 
+    sense_cnt = 1  # 与 DictHtmlParser.sense_idx 对齐: 第 k 条 def 渲染对应 sense_examples[k]
     for ei, e in enumerate(entries):
         # 第0个词块的词性跟在 h1 后; 之后的词块独立小节
         pos_txt = _esc(e["pos"]) if e["pos"] else ""
@@ -231,8 +283,11 @@ def convert_dict_html(html: str) -> str:
 
         # 该词块的所有释义：def + chn 放进同一个 <div>（用 <br> 换行而非分块），
         # 避免 QTextDocument 把相邻块之间插入大段空白的毛病，让英文/中文贴得更紧。
+        # 例句默认紧跟其所属释义(sense)正下方, 不再全部堆到文档末尾的 EXAMPLE 区。
         if e["defs"]:
             for i, (d, c) in enumerate(e["defs"], 1):
+                cur_no = sense_cnt
+                sense_cnt += 1  # 与 DictHtmlParser.sense_idx 一一对齐(每次 def 递增)
                 if not d and not c:
                     continue
                 parts.append("<div class='sense'>")
@@ -244,10 +299,27 @@ def convert_dict_html(html: str) -> str:
                 if c:
                     parts.append(f"<span class='chn'>{_esc(c)}</span>")
                 parts.append("</div>")
+                # 紧跟本释义的例句(如果有): 英文一行 + 搭配前缀 + 中文一行
+                exs = p.sense_examples[cur_no] if \
+                    cur_no < len(p.sense_examples) else []
+                for cf, en, cn in exs:
+                    if not (en or cn or cf):
+                        continue
+                    lead = f"<span class='excf'>{_esc(cf)}</span> " if en and cf else ""
+                    parts.append("<div class='ex'>")
+                    if en:
+                        parts.append(f"{lead}<span class='exx'>{_esc(en)}</span>")
+                        if cn:
+                            parts.append("<br>")
+                    if cn:
+                        parts.append(f"<span class='excn'>{_esc(cn)}</span>")
+                    parts.append("</div>")
 
-    # 例句（英文一行 + 中文一行，缩进收窄；不用 <ol> 避免 QText 有序列表内置缩进）
+    # 兜底: 仅当整篇没有任何 sense 内例句、却仍存在整体例句时才退化为旧的末尾
+    # EXAMPLE 区(非常规结构词条的保底, 避免把例句丢光)。
+    _any_sense_ex = any(x for x in p.sense_examples)
     extra = _extract_examples(html)
-    if extra:
+    if extra and not _any_sense_ex:
         parts.append("<div class='seclabel'>EXAMPLE</div><div class='exlist'>")
         for en, cn in extra[:10]:
             if en and cn:
@@ -255,8 +327,6 @@ def convert_dict_html(html: str) -> str:
                              f"<span class='excn'>{_esc(cn)}</span></div>")
             elif en:
                 parts.append(f"<div class='ex'><span class='exx'>{_esc(en)}</span></div>")
-            elif cn:
-                parts.append(f"<div class='ex'><span class='excn'>{_esc(cn)}</span></div>")
         parts.append("</div>")
 
     parts.append("</body></html>")
@@ -394,6 +464,7 @@ text-transform:uppercase;margin:22px 0 10px;}}
 div.exlist{{margin:0;padding-left:2px;}}
 div.ex{{margin:7px 0;padding-left:10px;border-left:2px solid {_CLR_HAIR};color:{_CLR_TEXT_SOFT};}}
 span.exx{{color:{_CLR_TEXT_SOFT};font-size:14px;line-height:1.5;}}
+span.excf{{color:{_CLR_ACCENT};font-style:italic;font-weight:600;font-size:13.5px;margin-right:6px;}}
 span.excn{{color:{_CLR_SECONDARY};font-size:13px;line-height:1.45;}}
 table{{border-collapse:collapse;}} td,th{{padding:3px 10px;font-size:15px;}}
 img{{max-width:100%;background:transparent;border:0;}}

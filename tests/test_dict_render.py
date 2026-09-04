@@ -76,3 +76,44 @@ def test_shcut_does_not_pollute_cn():
     # 中文 "经营" 与 "提供" 应分属两条释义，不出现 "经营管理 提供" 拼接
     assert "经营管" not in txt.replace(" ", "").replace("\n", "")
     assert "提供" in txt
+
+
+def _render_text(raw):
+    return _plain(convert_dict_html(raw)).replace("\n", " ")
+
+
+def test_examples_follow_their_sense():
+    """例句必须紧跟其所属释义(而不是整体堆到文档末尾 EXAMPLE 区)。
+
+    两条 sense: 每条带独立例句。断言: 例句1 出现在释义1之后、释义2之前;
+    全文不出现集中式的 'EXAMPLE' 区。
+    """
+    raw = (
+        "<div class='entry'><h1 class='headword'>abandon</h1>"
+        "<span class='pos'>verb</span>"
+        "<li class='sense'><span class='def'>to leave somebody</span>"
+        "<defT><chn>抛弃</chn></defT>"
+        "<ul class='examples'><li><span class='x'>They left the baby.</span>"
+        "<xT><chn>他们遗弃了婴儿。</chn></xT></li></ul></li>"
+        "<li class='sense'><span class='def'>to stop doing something</span>"
+        "<defT><chn>中止</chn></defT>"
+        "<ul class='examples'><li><span class='x'>They abandoned the talks.</span>"
+        "<xT><chn>他们中止了会谈。</chn></xT></li></ul></li>"
+    )
+    txt = _render_text(raw)
+    i_def1 = txt.find("to leave somebody")
+    i_ex1 = txt.find("They left the baby.")
+    i_def2 = txt.find("to stop doing something")
+    i_ex2 = txt.find("They abandoned the talks.")
+    assert 0 < i_def1 < i_ex1 < i_def2 < i_ex2, f"例句错位, 文本:{txt}"
+    assert "EXAMPLE" not in txt, "不应再出现集中式 EXAMPLE 区"
+
+
+def test_example_collocation_prefix_shows():
+    """例句前的搭配短语(<span class=cf>)保留为可读前缀, 不丢失。"""
+    raw = ("<div class='x'><li class='sense'><span class='def'>to leave</span>"
+           "<defT><chn>离开</chn></defT>"
+           "<ul class='examples'><li><span class='cf'>abandon somebody</span> "
+           "<span class='x'>He left his post.</span><xT><chn>他离职了。</chn></xT></li></ul></li></div>")
+    txt = _render_text(raw)
+    assert "abandon somebody" in txt
